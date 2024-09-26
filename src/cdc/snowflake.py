@@ -79,7 +79,7 @@ def snowflake_get_table_changes(cursor, table_name: str, cdc_schema: str = 'melc
     alter_table_add_timestamps_column_query = f"ALTER TABLE {temp_table_name} ADD COLUMN IF NOT EXISTS record_timestamp TIMESTAMP;"
     add_timestamps_query = f"""
         UPDATE {temp_table_name}
-        SET record_timestamp = sysdate
+        SET record_timestamp = sysdate()
         WHERE record_timestamp IS NULL;
         """
 
@@ -93,6 +93,7 @@ def snowflake_get_table_changes(cursor, table_name: str, cdc_schema: str = 'melc
         "BEGIN;",
         create_temp_table_query,
         alter_table_add_timestamps_column_query,
+        add_timestamps_query,
         insert_changes_query,
         drop_temp_table_query,
         "COMMIT;"
