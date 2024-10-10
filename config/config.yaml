@@ -1,0 +1,24 @@
+source:
+  type: snowflake
+  account: ${SNOWFLAKE_ACCOUNT_IDENTIFIER}
+  user: ${SNOWFLAKE_USER}
+  password: ${SNOWFLAKE_PASSWORD}
+  role: melchi_db_admin
+  warehouse: compute_wh
+  database: melchi_cdc_db
+
+target:
+  type: duckdb
+  database: ${DUCKDB_DATABASE_PATH}
+  cdc_metadata_schema: melchi
+
+tables_config:
+  path: ${TABLES_CONFIG_PATH}
+
+logging:
+  level: ${LOG_LEVEL}
+  file: ${LOG_FILE_PATH}
+
+# You can also include non-sensitive, hardcoded values
+batch_size: 1000
+retry_attempts: 3
