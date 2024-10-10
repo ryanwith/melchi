@@ -12,7 +12,7 @@ def transfer_schema(config, tables=None):
         if tables is None:
             tables = get_tables_to_transfer()
 
-        target_warehouse.begin_transaction()
+        target_warehouse.begin_transaction() 
         try:
             # creates the tables needed for tracking CDC
             target_warehouse.setup_target_environment()
