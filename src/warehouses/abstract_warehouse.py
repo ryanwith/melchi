@@ -45,6 +45,10 @@ class AbstractWarehouse(ABC):
     def setup_target_environment(self):
         pass
 
+    @abstractmethod
+    def create_cdc_stream(self, table_info):
+        pass
+
     def map_type_to(self, target_warehouse_type, source_type):
         method_name = f"{self.warehouse_type}_to_{target_warehouse_type}"
         mapping_method = getattr(TypeMapper, method_name, None)

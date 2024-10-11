@@ -11,6 +11,8 @@ class SnowflakeWarehouse(AbstractWarehouse):
     def connect(self):
         self.connection = snowflake.connector.connect(**self.config)
         self.cursor = self.connection.cursor()
+        self.cursor.execute(f"USE ROLE {self.config["role"]};")
+        self.cursor.execute(f"USE WAREHOUSE {self.config["warehouse"]};")
 
     def disconnect(self):
         if self.cursor:
@@ -45,3 +47,13 @@ class SnowflakeWarehouse(AbstractWarehouse):
 
     def setup_target_environment(self):
         pass
+
+    def create_cdc_stream(self, table_info):
+        database = table_info["database"]
+        schema = table_info["schema"]
+        table = table_info["table"]
+        stream_name = f"{self.config["cdc_schema"]}.{database}${schema}${table}"
+        table_name = f"{database}.{schema}.{table}"
+        create_stream_query = f"CREATE STREAM IF NOT EXISTS {stream_name} ON TABLE {table_name} SHOW_INITIAL_ROWS = true"
+        self.cursor.execute(create_stream_query)      
+

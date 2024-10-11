@@ -59,19 +59,15 @@ class DuckDBWarehouse(AbstractWarehouse):
             column_definitions.append(f"{pk_name} VARCHAR PRIMARY KEY")
 
         create_table_query = f"CREATE TABLE {schema_name}.{table_name} ({", ".join(column_definitions)});"
-        print(create_table_query)
 
         # create the actual table
         self.connection.execute(create_table_query)
 
         current_timestamp = datetime.datetime.now()
 
-        print(primary_keys)
         update_logs = f"""INSERT INTO {self.config["cdc_metadata_schema"]}.table_info VALUES (
             '{schema_name}', '{table_name}', '{current_timestamp}', '{current_timestamp}', {self.format_primary_keys(primary_keys)}
         )"""
-
-        print(update_logs)
 
         self.connection.execute(update_logs)
 
@@ -89,6 +85,9 @@ class DuckDBWarehouse(AbstractWarehouse):
             CREATE TABLE IF NOT EXISTS {self.config["cdc_metadata_schema"]}.table_info
                 (table_schema varchar, table_name varchar, created_at timestamp, updated_at timestamp, primary_keys varchar[], PRIMARY KEY (table_schema, table_name));
         """)
+
+    def create_cdc_stream(self, table_info):
+        pass
 
     def format_primary_keys(self, primary_keys):
         if len(primary_keys) == 1:

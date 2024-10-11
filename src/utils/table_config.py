@@ -15,7 +15,6 @@ def get_tables_to_transfer(config_path='config/tables_to_transfer.csv'):
                 reader.fieldnames[0] = first_field.lstrip('\ufeff')
 
             for row in reader:
-                print(row)
                 tables.append({
                     'database': row['database'],
                     'schema': row['schema'],

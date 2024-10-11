@@ -10,19 +10,24 @@ def sync_data(config):
 
         tables = get_tables_to_transfer(source_warehouse)
 
-        for table in tables:
-            source_schema = source_warehouse.get_schema(table)
+        # setup source warehouse
+        # for table in tables:
+        #     print(table)
+
+        # # setup target warehouse 
+        # for table in tables:
+        #     source_schema = source_warehouse.get_schema(table)
             
-            # Map source schema to target schema
-            target_schema = [
-                (col_name, source_warehouse.map_type_to(config.target_type, col_type))
-                for col_name, col_type in source_schema
-            ]
+        #     # Map source schema to target schema
+        #     target_schema = [
+        #         (col_name, source_warehouse.map_type_to(config.target_type, col_type))
+        #         for col_name, col_type in source_schema
+        #     ]
 
-            target_warehouse.create_table(table, target_schema)
+        #     target_warehouse.create_table(table, target_schema)
 
-            data = source_warehouse.get_data(table)
-            target_warehouse.insert_data(table, data)
+        #     data = source_warehouse.get_data(table)
+        #     target_warehouse.insert_data(table, data)
 
     finally:
         source_warehouse.disconnect()

@@ -6,6 +6,7 @@ source:
   role: melchi_db_admin
   warehouse: compute_wh
   database: melchi_cdc_db
+  cdc_schema: melchi_cdc_db.streams
 
 target:
   type: duckdb
