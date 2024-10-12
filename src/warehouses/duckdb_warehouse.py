@@ -24,11 +24,13 @@ class DuckDBWarehouse(AbstractWarehouse):
     def rollback_transaction(self):
         self.connection.rollback()
 
-    def get_schema(self, full_table_name):
-        result = self.connection.execute(f"PRAGMA table_info('{full_table_name}')")
+    def get_schema(self, table_info):
+        result = self.connection.execute(f"PRAGMA table_info('{self.get_full_table_name(table_info)}')")
         return [(col[1], col[2], col[5]) for col in result.fetchall()]
 
-    def create_table(self, schema_name, table_name, schema):
+    def create_table(self, table_info, schema):
+        schema_name = table_info["schema"]
+        table_name = table_info["table"]
         primary_keys = []
         column_definitions = []
 
@@ -66,14 +68,17 @@ class DuckDBWarehouse(AbstractWarehouse):
         current_timestamp = datetime.datetime.now()
 
         update_logs = f"""INSERT INTO {self.config["cdc_metadata_schema"]}.table_info VALUES (
-            '{schema_name}', '{table_name}', '{current_timestamp}', '{current_timestamp}', {self.format_primary_keys(primary_keys)}
+            '{schema_name}', '{table_name}', '{current_timestamp}', '{current_timestamp}', {self.convert_list_to_duckdb_syntax(primary_keys)}
         )"""
 
         self.connection.execute(update_logs)
 
     def get_data(self, table_name):
-        result = self.connection.execute(f"SELECT * FROM {table_name}")
+        result = self.connection.execute(f"SELECT * FROM {table_name};")
         return result.fetchall()
+
+    def get_data_as_df(self, table_name):
+        pass
 
     def insert_data(self, table_name, data):
         # Implementation for inserting data into DuckDB
@@ -83,14 +88,73 @@ class DuckDBWarehouse(AbstractWarehouse):
         self.connection.execute(f"CREATE SCHEMA IF NOT EXISTS {self.config["cdc_metadata_schema"]};")
         self.connection.execute(f"""
             CREATE TABLE IF NOT EXISTS {self.config["cdc_metadata_schema"]}.table_info
-                (table_schema varchar, table_name varchar, created_at timestamp, updated_at timestamp, primary_keys varchar[], PRIMARY KEY (table_schema, table_name));
+                (schema_name varchar, table_name varchar, created_at timestamp, updated_at timestamp, primary_keys varchar[], PRIMARY KEY (schema_name, table_name));
         """)
 
     def create_cdc_stream(self, table_info):
         pass
 
-    def format_primary_keys(self, primary_keys):
-        if len(primary_keys) == 1:
-            return f"['{primary_keys[0]}']"
-        else:
-            return f"[{", ".join(primary_keys.map(lambda pk: f"'{pk}'"))}]"
+    def get_changes(self, table_info):
+        pass
+
+    def get_full_table_name(self, table_info):
+        return f"{table_info["schema"]}.{table_info["table"]}"
+
+    def get_stream_name(self, table_info):
+        pass
+
+    def sync_table(self, table_info, df):
+        full_table_name = self.get_full_table_name(table_info)
+        temp_table_name = table_info["table"] + "_melchi_cdc"
+        self.connection.execute(f"CREATE OR REPLACE TEMP TABLE {temp_table_name} AS (SELECT * FROM df)")    
+        print('created')        
+        columns_to_insert = []
+        for row in self.get_schema(table_info):
+            columns_to_insert.append(row[0])
+        formatted_columns = ", ".join(columns_to_insert)
+        formatted_primary_keys = ", ".join(self.get_primary_keys(table_info))
+        print('delete start')
+        delete_sql_statement = f"""DELETE FROM {full_table_name}
+            WHERE ({formatted_primary_keys}) IN 
+            (
+                SELECT {formatted_primary_keys}
+                FROM {temp_table_name}
+                WHERE melchi_metadata_action = 'DELETE'
+            );
+        """
+        print(delete_sql_statement)
+        double_check_query = f"""SELECT * from {full_table_name}  WHERE ({formatted_primary_keys}) IN 
+            (
+                SELECT {formatted_primary_keys}
+                FROM {temp_table_name}
+                WHERE melchi_metadata_action = 'DELETE'
+            );"""
+        print(self.connection.execute(double_check_query).fetchall())
+        print('insert start')
+        insert_sql_statement = f"""INSERT INTO {full_table_name}
+            SELECT {formatted_columns} FROM {temp_table_name}
+            WHERE melchi_metadata_action = 'INSERT'
+        """
+        
+        self.connection.execute(delete_sql_statement)
+        self.connection.execute(insert_sql_statement)
+        # add update table info query
+
+        # if primary_keys == ["MELCHI_ROW_ID"]:
+        self.connection.execute(f"DROP TABLE {temp_table_name}")
+            
+
+    def convert_list_to_duckdb_syntax(self, standard_list):
+        return f"[{", ".join(list(map(lambda item: f"'{item}'", standard_list)))}]"
+    
+    def get_primary_keys(self, table_info):
+        columns = self.connection.execute(f"PRAGMA table_info('{self.get_full_table_name(table_info)}')").fetchall()
+        primary_keys = []
+        for row in columns:
+            if row[5] == True:
+                primary_keys.append(row[1])
+        return primary_keys
+    
+    def cleanup_cdc_for_table(self, table_info):
+        pass
+    # def insert_cdc_query()

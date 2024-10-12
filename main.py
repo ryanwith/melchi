@@ -19,7 +19,7 @@ def main():
         setup_source(config)
         print("Source setup complete")
         # print("Setting up target environment")
-        # transfer_schema(config)
+        transfer_schema(config)
         # print("Target environment setup complete")
     
     elif args.action == "sync_data":

@@ -18,15 +18,9 @@ def transfer_schema(config, tables=None):
             target_warehouse.setup_target_environment()
             for table_info in tables:
                 full_table_name = f"{table_info['database']}.{table_info['schema']}.{table_info['table']}"
-                source_schema = source_warehouse.get_schema(full_table_name)
-                
+                source_schema = source_warehouse.get_schema(table_info)
                 target_schema = generate_target_schema(source_warehouse, source_schema, config.target_type)
-
-                target_warehouse.create_table(table_info['schema'], table_info['table'], target_schema)
-
-                # Optionally, you could also insert initial data here
-                # initial_data = source_warehouse.get_data(full_table_name)
-                # target_warehouse.insert_data(target_table_name, initial_data)
+                target_warehouse.create_table(table_info, target_schema)
 
                 print(f"Table {full_table_name} schema transferred successfully.")
 

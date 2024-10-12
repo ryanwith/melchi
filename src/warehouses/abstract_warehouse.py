@@ -26,11 +26,11 @@ class AbstractWarehouse(ABC):
         pass
 
     @abstractmethod
-    def get_schema(self, full_table_name):
+    def get_schema(self, table_info):
         pass
 
     @abstractmethod
-    def create_table(self, schema_name, table_name, schema):
+    def create_table(self, table_info, schema):
         pass
 
     @abstractmethod
@@ -42,11 +42,35 @@ class AbstractWarehouse(ABC):
         pass
 
     @abstractmethod
+    def get_data_as_df(self, table_name):
+        pass
+
+    @abstractmethod
     def setup_target_environment(self):
         pass
 
     @abstractmethod
     def create_cdc_stream(self, table_info):
+        pass
+
+    @abstractmethod
+    def get_changes(self, table_info):
+        pass
+
+    @abstractmethod
+    def get_full_table_name(self, table_info):
+        pass
+
+    @abstractmethod
+    def sync_table(self, table_info, df):
+        pass
+
+    @abstractmethod
+    def get_stream_name(self, table_info):
+        pass
+
+    @abstractmethod
+    def cleanup_cdc_for_table(self, table_info):
         pass
 
     def map_type_to(self, target_warehouse_type, source_type):

@@ -7,6 +7,8 @@ source:
   warehouse: compute_wh
   database: melchi_cdc_db
   cdc_schema: melchi_cdc_db.streams
+  cdc_strategy: cdc_streams
+  batch_size: 10000
 
 target:
   type: duckdb
