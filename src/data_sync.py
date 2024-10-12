@@ -15,10 +15,10 @@ def sync_data(config):
         if source_warehouse.config["cdc_strategy"] == "cdc_streams":
             for table_info in tables:
                 try:
-                    # target_warehouse.begin_transaction()
+                    target_warehouse.begin_transaction()
                     cdc_df = source_warehouse.get_cdc_data(table_info)
                     target_warehouse.sync_table(table_info, cdc_df)
-                    # target_warehouse.commit_transaction()
+                    target_warehouse.commit_transaction()
                     source_warehouse.cleanup_cdc_for_table(table_info)
 
                 except Exception as e:

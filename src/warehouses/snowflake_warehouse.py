@@ -52,7 +52,6 @@ class SnowflakeWarehouse(AbstractWarehouse):
         stream_name = self.get_stream_name(table_info)
         changes = self.get_data_as_df(stream_processing_table_name)
         if changes.empty:
-            print(f"INSERT INTO {stream_processing_table_name} SELECT * FROM {stream_name};")
             self.cursor.execute(f"INSERT INTO {stream_processing_table_name} SELECT * FROM {stream_name};")
             changes = self.get_data_as_df(stream_processing_table_name)
         changes.rename(columns={"METADATA$ROW_ID": "MELCHI_ROW_ID", "METADATA$ACTION": "MELCHI_METADATA_ACTION"}, inplace=True)
