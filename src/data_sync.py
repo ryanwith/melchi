@@ -19,6 +19,9 @@ def sync_data(config):
                     cdc_df = source_warehouse.get_cdc_data(table_info)
                     target_warehouse.sync_table(table_info, cdc_df)
                     target_warehouse.commit_transaction()
+
+                    # if there are any issues with commiting into the target database this won't be executed
+                    # the CDC data will still exist in the source warehouse and will be able to be grabbed the next time sync_data is run
                     source_warehouse.cleanup_cdc_for_table(table_info)
 
                 except Exception as e:
@@ -26,32 +29,6 @@ def sync_data(config):
                     target_warehouse.rollback_transaction()
                     print(f"Error ingesting data sync: {e}")
                     raise
-                # while True:
-                #     batch = snowflake_cursor.fetchmany(source_warehouse.config["batch_size"])
-                #     if not batch:
-                #         break
-                    
-                #     df = pd.DataFrame(batch, columns=[desc[0] for desc in snowflake_cursor.description])
-                    
-                #     # Use DuckDB's from_df function to insert data from the DataFrame
-                #     duckdb_conn.execute(f"INSERT INTO {table_name} SELECT * FROM duckdb.from_df($df)", {'df': df})
-        # setup source warehouse
-        # for table in tables:
-
-        # # setup target warehouse 
-        # for table in tables:
-        #     source_schema = source_warehouse.get_schema(table)
-            
-        #     # Map source schema to target schema
-        #     target_schema = [
-        #         (col_name, source_warehouse.map_type_to(config.target_type, col_type))
-        #         for col_name, col_type in source_schema
-        #     ]
-
-        #     target_warehouse.create_table(table, target_schema)
-
-        #     data = source_warehouse.get_data(table)
-        #     target_warehouse.insert_data(table, data)
 
     finally:
         source_warehouse.disconnect()
