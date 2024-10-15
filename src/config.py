@@ -5,8 +5,13 @@ from dotenv import load_dotenv
 load_dotenv()
 
 class Config:
-    def __init__(self, config_path):
-        self.config_data = self.load_config(config_path)
+    def __init__(self, config_path=None, config_dict=None):
+        if config_path:
+            self.config_data = self.load_config(config_path)
+        elif config_dict:
+            self.config_data = self._process_config(config_dict)
+        else:
+            raise ValueError("Either config_path or config_dict must be provided")
         
         self.source_type = self.config_data['source']['type']
         self.target_type = self.config_data['target']['type']
@@ -14,6 +19,9 @@ class Config:
         # Remove 'type' from source_config
         self.source_config = {k: v for k, v in self.config_data['source'].items() if k != 'type'}
         self.target_config = {k: v for k, v in self.config_data['target'].items() if k != 'type'}
+
+    def get_tables_config_path(self):
+        return self.config_data["tables_config"]["path"]
 
     @staticmethod
     def load_config(config_path):
@@ -38,10 +46,7 @@ class Config:
         else:
             return config
 
-# Usage example
-if __name__ == "__main__":
-    config = Config("path/to/config.yaml")
-    print(f"Source type: {config.source_type}")
-    print(f"Target type: {config.target_type}")
-    print(f"Source config: {config.source_config}")
-    print(f"Target config: {config.target_config}")
+    @classmethod
+    def from_dict(cls, config_dict):
+        return cls(config_dict=config_dict)
+

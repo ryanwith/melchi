@@ -9,14 +9,16 @@ source:
   cdc_schema: melchi_cdc_db.streams
   cdc_strategy: cdc_streams
   batch_size: 10000
+  replace_existing: true
 
 target:
   type: duckdb
   database: ${DUCKDB_DATABASE_PATH}
   cdc_metadata_schema: melchi
+  replace_existing: true
 
 tables_config:
-  path: ${TABLES_CONFIG_PATH}
+  path: "config/tables_to_transfer.csv"
 
 logging:
   level: ${LOG_LEVEL}

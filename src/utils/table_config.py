@@ -1,9 +1,9 @@
 import csv
 import os
 
-def get_tables_to_transfer(config_path='config/tables_to_transfer.csv'):
+def get_tables_to_transfer(config):
     tables = []
-    csv_path = os.path.join(os.path.dirname(__file__), '..', '..', config_path)
+    csv_path = os.path.join(os.path.dirname(__file__), '..', '..', config.get_tables_config_path())
     
     try:
         with open(csv_path, 'r', encoding='utf-8') as csvfile:

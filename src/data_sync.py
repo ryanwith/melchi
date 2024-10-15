@@ -10,7 +10,7 @@ def sync_data(config):
         source_warehouse.connect()
         target_warehouse.connect()
 
-        tables = get_tables_to_transfer()
+        tables = get_tables_to_transfer(config)
 
         if source_warehouse.config["cdc_strategy"] == "cdc_streams":
             for table_info in tables:

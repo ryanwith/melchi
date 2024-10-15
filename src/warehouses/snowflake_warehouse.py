@@ -32,7 +32,10 @@ class SnowflakeWarehouse(AbstractWarehouse):
 
     def get_schema(self, table_info):
         self.cursor.execute(f"DESC TABLE {self.get_full_table_name(table_info)}")
-        return [(col[0], col[1], col[5]) for col in self.cursor.fetchall()]
+        schema = []
+        for row in self.cursor.fetchall():
+            schema.append(self.format_schema_row(row))
+        return schema
 
     def create_table(self, table_info, schema):
         # Implementation for creating a table in Snowflake
@@ -77,17 +80,17 @@ class SnowflakeWarehouse(AbstractWarehouse):
         create_stream_query = f"CREATE STREAM IF NOT EXISTS {stream_name} ON TABLE {table_name} SHOW_INITIAL_ROWS = true"
         self.cursor.execute(create_stream_query)
         stream_processing_table = f"{stream_name}_processing"
-        create_stream_processing_table_queries = [f"CREATE TABLE IF NOT EXISTS {stream_processing_table} LIKE {table_name};",
-            f"ALTER TABLE {stream_processing_table} ADD COLUMN METADATA$ACTION varchar;",
-            f"ALTER TABLE {stream_processing_table} ADD COLUMN \"METADATA$ISUPDATE\" varchar;",
-            f"ALTER TABLE {stream_processing_table} ADD COLUMN \"METADATA$ROW_ID\" varchar;"
+        if self.replace_existing_tables == True:
+            create_query = f"CREATE OR REPLACE TABLE {stream_processing_table} LIKE {table_name};"
+        else:
+            create_query = f"CREATE TABLE {stream_processing_table} IF NOT EXISTS LIKE {table_name};"
+        create_stream_processing_table_queries = [create_query,
+            f"ALTER TABLE {stream_processing_table} ADD COLUMN IF NOT EXISTS\"METADATA$ACTION\" varchar;",
+            f"ALTER TABLE {stream_processing_table} ADD COLUMN IF NOT EXISTS \"METADATA$ISUPDATE\" varchar;",
+            f"ALTER TABLE {stream_processing_table} ADD COLUMN IF NOT EXISTS \"METADATA$ROW_ID\" varchar;"
         ]
         for query in create_stream_processing_table_queries:
             self.cursor.execute(query)
-        # # Used to advance streams
-        # cdc_cdc_tracker_query =f"""CREATE TABLE IF NOT EXISTS {self.config["cdc_schema"]}.melchi_cdc_tracker 
-        #     (database_name varchar, schema_name varchar, table_name varchar, last_cdc timestamp_ltz);"""
-        # self.cursor.execute(cdc_cdc_tracker_query)
 
     def get_stream_name(self, table_info):
         database = table_info["database"]
@@ -107,8 +110,38 @@ class SnowflakeWarehouse(AbstractWarehouse):
         table = table_info["table"]
         return f"{database}.{schema}.{table}"
     
+    def execute_query(self, query_text):
+        self.cursor.execute(query_text)
+
+    def fetch_results(self, num = None):
+        if num is None:
+            results = self.cursor.fetchall()
+        elif num == 1:
+            results = self.cursor.fetchone()
+        elif num > 1:
+            results = self.cursor.fetchall()
+        else:
+            raise ValueError(f"Invalid value for 'num': {num}. Expected None or a positive integer.")
+        return results   
+    
     def sync_table(self, table_info, df):
         pass
 
     def convert_cursor_results_to_df(self, results):
         pd.DataFrame(results, columns=[desc[0] for desc in self.cursor.description])
+
+    def replace_existing_tables(self):
+        replace_existing = self.config.get("replace_existing", False)
+        if replace_existing == True:
+            return True
+        else:
+            return False
+        
+    def format_schema_row(self, row):
+        return {
+            "name": row[0],
+            "type": row[1],
+            "nullable": True if row[3] == "Y" else False,
+            "default_value": row[4],
+            "primary_key": True if row[3] == "Y" else False
+        }

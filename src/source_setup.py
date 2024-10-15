@@ -10,7 +10,7 @@ def setup_source(config, tables = None):
         target_warehouse.connect()
 
         if tables == None:
-            tables = get_tables_to_transfer()
+            tables = get_tables_to_transfer(config)
 
         if source_warehouse.config["cdc_strategy"] == "cdc_streams":
             try:
