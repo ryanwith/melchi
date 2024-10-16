@@ -77,14 +77,16 @@ class SnowflakeWarehouse(AbstractWarehouse):
     def create_cdc_stream(self, table_info):
         stream_name = self.get_stream_name(table_info)
         table_name = f"{table_info["database"]}.{table_info["schema"]}.{table_info["table"]}"
-        create_stream_query = f"CREATE STREAM IF NOT EXISTS {stream_name} ON TABLE {table_name} SHOW_INITIAL_ROWS = true"
-        self.cursor.execute(create_stream_query)
         stream_processing_table = f"{stream_name}_processing"
-        if self.replace_existing_tables == True:
+        if self.replace_existing_tables() == True:
             create_query = f"CREATE OR REPLACE TABLE {stream_processing_table} LIKE {table_name};"
+            create_stream_query = f"CREATE OR REPLACE STREAM {stream_name} ON TABLE {table_name} SHOW_INITIAL_ROWS = true"
         else:
             create_query = f"CREATE TABLE {stream_processing_table} IF NOT EXISTS LIKE {table_name};"
-        create_stream_processing_table_queries = [create_query,
+            create_stream_query = f"CREATE STREAM IF NOT EXISTS {stream_name} ON TABLE {table_name} SHOW_INITIAL_ROWS = true"
+        create_stream_processing_table_queries = [
+            create_stream_query,
+            create_query,
             f"ALTER TABLE {stream_processing_table} ADD COLUMN IF NOT EXISTS\"METADATA$ACTION\" varchar;",
             f"ALTER TABLE {stream_processing_table} ADD COLUMN IF NOT EXISTS \"METADATA$ISUPDATE\" varchar;",
             f"ALTER TABLE {stream_processing_table} ADD COLUMN IF NOT EXISTS \"METADATA$ROW_ID\" varchar;"
