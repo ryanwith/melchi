@@ -35,7 +35,7 @@ class DuckDBWarehouse(AbstractWarehouse):
         primary_keys = []
         # create a schema if needed
         self.connection.execute(f"CREATE SCHEMA IF NOT EXISTS {table_info["schema"]}")
-
+        print(target_schema)
         # build a list of primary keys
         for column in target_schema:
             if column["primary_key"] == True:
@@ -78,7 +78,7 @@ class DuckDBWarehouse(AbstractWarehouse):
 
         update_logs = [
             f"""
-            INSERT INTO {self.get_metadata_schema()}.table_info VALUES (
+            INSERT INTO {self.get_metadata_schema()}.captured_tables VALUES (
                 '{table_info["schema"]}', '{table_info["table"]}', '{current_timestamp}', '{current_timestamp}', {self.convert_list_to_duckdb_syntax(primary_keys)}
             );"""
             ,
@@ -104,7 +104,7 @@ class DuckDBWarehouse(AbstractWarehouse):
     def setup_target_environment(self):
         self.connection.execute(f"CREATE SCHEMA IF NOT EXISTS {self.config["cdc_metadata_schema"]};")
         self.connection.execute(f"""
-            CREATE TABLE IF NOT EXISTS {self.config["cdc_metadata_schema"]}.table_info
+            CREATE TABLE IF NOT EXISTS {self.config["cdc_metadata_schema"]}.captured_tables
                 (schema_name varchar, table_name varchar, created_at timestamp, updated_at timestamp, primary_keys varchar[]);
         """)
         self.connection.execute(f"""
@@ -132,18 +132,19 @@ class DuckDBWarehouse(AbstractWarehouse):
         # somehow this grabs the dataframe but i am not sure how
         self.connection.execute(f"CREATE OR REPLACE TEMP TABLE {temp_table_name} AS (SELECT * FROM df)")    
         columns_to_insert = []
-        for row in self.get_schema(table_info):
-            columns_to_insert.append(row[0])
+        for col in self.get_schema(table_info):
+            columns_to_insert.append(col["name"])
         formatted_columns = ", ".join(columns_to_insert)
         formatted_primary_keys = ", ".join(self.get_primary_keys(table_info))
         delete_sql_statement = f"""DELETE FROM {full_table_name}
             WHERE ({formatted_primary_keys}) IN 
             (
-                SELECT {formatted_primary_keys}
+                SELECT ({formatted_primary_keys})
                 FROM {temp_table_name}
                 WHERE melchi_metadata_action = 'DELETE'
             );
         """
+        print(delete_sql_statement)
         insert_sql_statement = f"""INSERT INTO {full_table_name}
             SELECT {formatted_columns} FROM {temp_table_name}
             WHERE melchi_metadata_action = 'INSERT'
@@ -161,10 +162,16 @@ class DuckDBWarehouse(AbstractWarehouse):
     
     def get_primary_keys(self, table_info):
         captured_tables = f"{self.get_metadata_schema()}.captured_tables"
-        primary_keys = self.connection.execute(f"""
+        print(captured_tables)
+        get_primary_keys_query = f"""
             SELECT primary_keys FROM {captured_tables}
                 WHERE table_name = '{table_info["table"]}' and schema_name = '{table_info["schema"]}'
-        """).fetchone()[0]
+        """
+        # get_primary_keys_query = f"""
+        #     SELECT primary_keys FROM {captured_tables}
+        #         WHERE table_name = '{table_info["table"]}' and schema_name = '{table_info["schema"]}'
+        # """
+        primary_keys = self.connection.execute(get_primary_keys_query).fetchone()[0]
         return primary_keys
     
     def cleanup_cdc_for_table(self, table_info):
