@@ -212,7 +212,7 @@ class DuckDBWarehouse(AbstractWarehouse):
         }
     
     def generate_create_table_statement(self, table_info, schema):
-        if self.replace_existing_tables == True:
+        if self.replace_existing_tables() == True:
             create_statement = f"CREATE OR REPLACE TABLE {self.get_full_table_name(table_info)} "
         else:
             create_statement = f"CREATE TABLE IF NOT EXISTS {self.get_full_table_name(table_info)} "

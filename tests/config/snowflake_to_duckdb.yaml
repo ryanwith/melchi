@@ -10,6 +10,7 @@ source:
   cdc_schema: test_melchi_db.test_melchi_schema
   role: ${TEST_SNOWFLAKE_ROLE}
   cdc_strategy: cdc_streams
+  replace_existing: true
 
 target:
   type: duckdb

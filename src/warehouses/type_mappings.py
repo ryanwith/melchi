@@ -6,12 +6,14 @@ class TypeMapper:
         type_data = snowflake_type.split("(")
         main_type = type_data[0]
 
-        same_names_no_modifiers = ("FLOAT", "VARCHAR", "BOOLEAN", "DATE", "TIME")
+        same_names_no_modifiers = ("VARCHAR", "BOOLEAN", "DATE", "TIME")
 
         if main_type in same_names_no_modifiers:
             return main_type
         elif main_type == "NUMBER":
             return f"DECIMAL({type_data[1]}"
+        elif main_type == "FLOAT":
+            return "DOUBLE"
         elif main_type == "BINARY":
             return "BLOB"
         elif main_type in ("TIMESTAMP_TZ", "TIMESTAMP_LTZ"):
