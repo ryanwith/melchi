@@ -37,7 +37,7 @@ class SnowflakeWarehouse(AbstractWarehouse):
             schema.append(self.format_schema_row(row))
         return schema
 
-    def create_table(self, table_info, schema):
+    def create_table(self, table_info, source_schema, target_schema):
         # Implementation for creating a table in Snowflake
         pass
 
@@ -145,3 +145,33 @@ class SnowflakeWarehouse(AbstractWarehouse):
             "default_value": row[4],
             "primary_key": True if row[3] == "Y" else False
         }
+
+    def insert_df(self, table_info, df):
+        print("INSERTING STARTED")
+        table_name = self.get_full_table_name(table_info)
+        # Ensure we have an active connection
+        if not self.connection or not self.cursor:
+            self.connect()
+        
+        try:
+            # Convert DataFrame to list of tuples
+            data = [tuple(x) for x in df.to_numpy()]
+            
+            # Generate the SQL INSERT statement
+            columns = ', '.join(df.columns)
+            placeholders = ', '.join(['%s'] * len(df.columns))
+            sql = f"INSERT INTO {table_name} ({columns}) VALUES ({placeholders})"
+            
+            # Execute the insert
+            self.cursor.executemany(sql, data)
+            
+            # Commit the transaction
+            self.connection.commit()
+            
+            print(f"Successfully inserted {len(data)} rows into {table_name}")
+            return True, len(data)
+        
+        except Exception as e:
+            print(f"Error inserting data into {table_name}: {str(e)}")
+            self.connection.rollback()
+            return False, 0

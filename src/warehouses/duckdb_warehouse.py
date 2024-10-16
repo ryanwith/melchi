@@ -31,14 +31,13 @@ class DuckDBWarehouse(AbstractWarehouse):
             rows.append(self.format_schema_row(row))
         return rows
 
-    def create_table(self, table_info, schema):
+    def create_table(self, table_info, source_schema, target_schema):
         primary_keys = []
-
         # create a schema if needed
         self.connection.execute(f"CREATE SCHEMA IF NOT EXISTS {table_info["schema"]}")
 
         # build a list of primary keys
-        for column in schema:
+        for column in target_schema:
             if column["primary_key"] == True:
                 primary_keys.append(column["name"])
 
@@ -46,7 +45,7 @@ class DuckDBWarehouse(AbstractWarehouse):
         # we do not actually set the primary keys in duckdb as it is too eager for enforcement in transactions
         if len(primary_keys) == 0:
             pk_name = "MELCHI_ROW_ID"
-            schema.append({
+            target_schema.append({
                 "name": f"{pk_name}",
                 "type": "VARCHAR",
                 "nullable": False,
@@ -55,17 +54,41 @@ class DuckDBWarehouse(AbstractWarehouse):
             })
             primary_keys.append(pk_name)
         
-        create_table_query = self.generate_create_table_statement(table_info, schema)
+        create_table_query = self.generate_create_table_statement(table_info, target_schema)
 
         # create the actual table
         self.connection.execute(create_table_query)
         current_timestamp = datetime.datetime.now()
 
-        update_logs = f"""INSERT INTO {self.get_cdc_table_info_table_name()} VALUES (
-            '{table_info["schema"]}', '{table_info["table"]}', '{current_timestamp}', '{current_timestamp}', {self.convert_list_to_duckdb_syntax(primary_keys)}
-        )"""
+        source_columns = []
 
-        self.connection.execute(update_logs)
+        for column in source_schema:
+            source_db = f"'{table_info["database"]}'"
+            source_schema_name = f"'{table_info["schema"]}'"
+            source_table = f"'{table_info["table"]}'"
+            name = f"'{column["name"]}'"
+            type = f"'{column["type"]}'"
+            nullable = "TRUE" if column["nullable"] == True else "FALSE"
+            default_value = f"'{column["default_value"]}'" if column["default_value"] else "NULL"
+            primary_key = "TRUE" if column["primary_key"] == True else "FALSE"
+            source_column_values = f"""(
+                {source_db}, {source_schema_name}, {source_table}, {name}, {type}, {default_value}, {nullable}, {primary_key}
+            )"""
+            source_columns.append(source_column_values)
+
+        update_logs = [
+            f"""
+            INSERT INTO {self.get_metadata_schema()}.table_info VALUES (
+                '{table_info["schema"]}', '{table_info["table"]}', '{current_timestamp}', '{current_timestamp}', {self.convert_list_to_duckdb_syntax(primary_keys)}
+            );"""
+            ,
+            f"""
+            INSERT INTO {self.get_metadata_schema()}.source_columns VALUES
+            {(",\n").join(source_columns)};
+            """
+            ]
+
+        self.connection.execute("\n".join(update_logs))
 
     def get_data(self, table_name):
         result = self.connection.execute(f"SELECT * FROM {table_name};")
@@ -83,6 +106,11 @@ class DuckDBWarehouse(AbstractWarehouse):
         self.connection.execute(f"""
             CREATE TABLE IF NOT EXISTS {self.config["cdc_metadata_schema"]}.table_info
                 (schema_name varchar, table_name varchar, created_at timestamp, updated_at timestamp, primary_keys varchar[]);
+        """)
+        self.connection.execute(f"""
+            CREATE TABLE IF NOT EXISTS {self.config["cdc_metadata_schema"]}.source_columns (
+            table_catalog varchar, table_schema varchar, table_name varchar, column_name varchar, data_type varchar, column_default varchar, is_nullable boolean, primary_key boolean
+            );
         """)
 
     def create_cdc_stream(self, table_info):
@@ -132,22 +160,19 @@ class DuckDBWarehouse(AbstractWarehouse):
         return f"[{", ".join(list(map(lambda item: f"'{item}'", standard_list)))}]"
     
     def get_primary_keys(self, table_info):
-        cdc_table_info_table = self.get_cdc_table_info_table_name()
+        captured_tables = f"{self.get_metadata_schema()}.captured_tables"
         primary_keys = self.connection.execute(f"""
-            SELECT primary_keys FROM {cdc_table_info_table}
+            SELECT primary_keys FROM {captured_tables}
                 WHERE table_name = '{table_info["table"]}' and schema_name = '{table_info["schema"]}'
         """).fetchone()[0]
         return primary_keys
     
     def cleanup_cdc_for_table(self, table_info):
         pass
-
-    def get_cdc_table_info_table_name(self):
-        return f"{self.config["cdc_metadata_schema"]}.table_info"
     
     def update_cdc_tracker(self, table_info):
         where_clause = f"WHERE table_name = '{table_info["table"]}' and schema_name = '{table_info["schema"]}'"
-        self.connection.execute(f"UPDATE {self.get_cdc_table_info_table_name()} SET updated_at = current_timestamp {where_clause} ")
+        self.connection.execute(f"UPDATE {self.get_metadata_schema()}.captured_tables SET updated_at = current_timestamp {where_clause} ")
 
     def execute_query(self, query_text):
         self.connection.execute(query_text)
@@ -201,3 +226,6 @@ class DuckDBWarehouse(AbstractWarehouse):
             if column["type"] == "GEOMETRY":
                 return True
         return False
+
+    def insert_df(self, table_info, df):
+        pass

@@ -30,7 +30,7 @@ class AbstractWarehouse(ABC):
         pass
 
     @abstractmethod
-    def create_table(self, table_info, schema):
+    def create_table(self, table_info, source_schema, target_schema):
         pass
 
     @abstractmethod
@@ -81,6 +81,9 @@ class AbstractWarehouse(ABC):
     def fetch_results(self, num):
         pass    
 
+    def get_metadata_schema(self):
+        return self.config["cdc_metadata_schema"]
+
     def map_schema_to(self, table_info, target_warehouse_type):
         method_name = f"{self.warehouse_type}_to_{target_warehouse_type}"
         mapping_method = getattr(TypeMapper, method_name, None)
@@ -100,6 +103,10 @@ class AbstractWarehouse(ABC):
         else:
             raise NotImplementedError(f"Type mapping from {self.warehouse_type} to {target_warehouse_type} is not implemented")
 
+    @abstractmethod
+    def insert_df(self, table_info, df):
+        pass
+    
     @abstractmethod
     def replace_existing_tables(self):
         pass
