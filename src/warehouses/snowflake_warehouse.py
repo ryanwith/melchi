@@ -145,7 +145,7 @@ class SnowflakeWarehouse(AbstractWarehouse):
             "type": row[1],
             "nullable": True if row[3] == "Y" else False,
             "default_value": row[4],
-            "primary_key": True if row[3] == "Y" else False
+            "primary_key": True if row[5] == "Y" else False
         }
 
     def insert_df(self, table_info, df):
