@@ -14,9 +14,9 @@ class TypeMapper:
             return f"DECIMAL({type_data[1]}"
         elif main_type == "BINARY":
             return "BLOB"
-        elif main_type == "TIMESTAMP_TZ":
+        elif main_type in ("TIMESTAMP_TZ", "TIMESTAMP_LTZ"):
             return "TIMESTAMPTZ"
-        elif main_type in ("TIMESTAMP_NTZ", "TIMESTAMP_LTZ"):
+        elif main_type == "TIMESTAMP_NTZ":
             precision = int(type_data[1][:-1])
             return f"TIMESTAMP({precision})"
         elif main_type in ("VARIANT", "OBJECT", "JSON", "ARRAY"):
