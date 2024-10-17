@@ -51,10 +51,6 @@ class SnowflakeWarehouse(AbstractWarehouse):
     def get_data_as_df(self, table_name):
         results = self.get_data(table_name)
         return pd.DataFrame(results, columns=[desc[0] for desc in self.cursor.description])
-        
-    def insert_data(self, table_name, data):
-        # Implementation for inserting data into Snowflake
-        pass
 
     def setup_environment(self, tables_to_transfer = None):
         if self.config["warehouse_role"] == "TARGET":
@@ -74,26 +70,18 @@ class SnowflakeWarehouse(AbstractWarehouse):
         else:
             raise ValueError(f"Invalid or no cdc_strategy provided")
 
-    def get_cdc_data(self, table_info):
-        stream_processing_table_name = self.get_stream_processing_table_name(table_info)
-        stream_name = self.get_stream_name(table_info)
-        changes = self.get_data_as_df(stream_processing_table_name)
-        if changes.empty:
-            self.cursor.execute(f"INSERT INTO {stream_processing_table_name} SELECT * FROM {stream_name};")
-            changes = self.get_data_as_df(stream_processing_table_name)
-        changes.rename(columns={"METADATA$ROW_ID": "MELCHI_ROW_ID", "METADATA$ACTION": "MELCHI_METADATA_ACTION"}, inplace=True)
-        return changes
+    def get_full_table_name(self, table_info):
+        database = table_info["database"]
+        schema = table_info["schema"]
+        table = table_info["table"]
+        return f"{database}.{schema}.{table}"
+    
 
-    def cleanup_cdc_for_table(self, table_info):
-        stream_processing_table_name = self.get_stream_processing_table_name(table_info)
-        self.cursor.execute(f"TRUNCATE TABLE {stream_processing_table_name}")
-
-    def setup_target_environment(self):
-        pass
-
-    def get_changes(self, table_info):
-        pass
-
+    # input: table_info dictionary
+    # output:
+        # creates a snowflake stream to capturing raw CDC tables
+        # creates a permanent table the ingest stream updates into
+    # note: autogenerate names that should be unique
     def create_cdc_stream(self, table_info):
         stream_name = self.get_stream_name(table_info)
         table_name = f"{table_info["database"]}.{table_info["schema"]}.{table_info["table"]}"
@@ -114,6 +102,27 @@ class SnowflakeWarehouse(AbstractWarehouse):
         for query in create_stream_processing_table_queries:
             self.cursor.execute(query)
 
+    # input: table info dictionary
+    # output:
+        # ingests any CDC data in stream table into permanent cdc table advancing the offset
+        # returns these changes
+    def get_cdc_data(self, table_info):
+        stream_processing_table_name = self.get_stream_processing_table_name(table_info)
+        stream_name = self.get_stream_name(table_info)
+        changes = self.get_data_as_df(stream_processing_table_name)
+        if changes.empty:
+            self.cursor.execute(f"INSERT INTO {stream_processing_table_name} SELECT * FROM {stream_name};")
+            changes = self.get_data_as_df(stream_processing_table_name)
+        changes.rename(columns={"METADATA$ROW_ID": "MELCHI_ROW_ID", "METADATA$ACTION": "MELCHI_METADATA_ACTION"}, inplace=True)
+        return changes
+
+    def cleanup_cdc_for_table(self, table_info):
+        stream_processing_table_name = self.get_stream_processing_table_name(table_info)
+        self.cursor.execute(f"TRUNCATE TABLE {stream_processing_table_name}")
+
+    def setup_target_environment(self):
+        pass
+
     def get_stream_name(self, table_info):
         database = table_info["database"]
         schema = table_info["schema"]
@@ -125,12 +134,6 @@ class SnowflakeWarehouse(AbstractWarehouse):
         schema = table_info["schema"]
         table = table_info["table"]
         return f"{self.config["cdc_schema"]}.{database}${schema}${table}_processing"
-    
-    def get_full_table_name(self, table_info):
-        database = table_info["database"]
-        schema = table_info["schema"]
-        table = table_info["table"]
-        return f"{database}.{schema}.{table}"
     
     def execute_query(self, query_text):
         self.cursor.execute(query_text)

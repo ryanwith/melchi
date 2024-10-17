@@ -61,26 +61,21 @@ class AbstractWarehouse(ABC):
     @abstractmethod
     def get_data_as_df(self, table_name):
         pass
-    
-    @abstractmethod
-    def insert_data(self, table_name, data):
-        pass
 
     # sets up a warehouse environment as a source or target based on the config
     @abstractmethod
     def setup_environment(self, tables_to_transfer = None):
         pass
 
-    @abstractmethod
-    def create_cdc_stream(self, table_info):
-        pass
-
-    @abstractmethod
-    def get_changes(self, table_info):
-        pass
-
+    # gets a table name in a way that can be queried
     @abstractmethod
     def get_full_table_name(self, table_info):
+        pass
+
+    # input: table_info dictionary
+    # output: creates CDC streams used to get changes.  can be multiple tables
+    @abstractmethod
+    def create_cdc_stream(self, table_info):
         pass
 
     @abstractmethod

@@ -96,10 +96,6 @@ class DuckDBWarehouse(AbstractWarehouse):
     def get_data_as_df(self, table_name):
         pass
 
-    def insert_data(self, table_name, data):
-        # Implementation for inserting data into DuckDB
-        pass
-
     def setup_environment(self):
         if self.config["warehouse_role"] == "TARGET":
             self.setup_target_environment()
@@ -107,15 +103,33 @@ class DuckDBWarehouse(AbstractWarehouse):
             raise NotImplementedError(f"DuckDB is not yet supported as a source")
         else:
             raise ValueError(f"Unknown warehouse role: {self.config["warehoues_role"]}")
-    
+
+    def get_full_table_name(self, table_info):
+        return f"{table_info["schema"]}.{table_info["table"]}"
+
+    # output:
+        # creates metadata tables for cdc
+            # captured_tables
+                # which tables are being replicated 
+                # when they're inserted into
+                # what we're considering primary keys for CDC purposes
+            # source_schema
+                # the schema of the object in the source
+                # can be important for understanding how to query it
     def setup_target_environment(self):
         self.connection.execute(f"CREATE SCHEMA IF NOT EXISTS {self.config["cdc_metadata_schema"]};")
+        if self.replace_existing_tables() == True:
+            print("REPLACE ECISTING IS TRUE")
+            beginning_of_query = "CREATE OR REPLACE TABLE"
+        else:
+            print("REPLACE EXISTING IS FALSE")
+            beginning_of_query = "CREATE TABLE IF NOT EXISTS"
         self.connection.execute(f"""
-            CREATE TABLE IF NOT EXISTS {self.config["cdc_metadata_schema"]}.captured_tables
+            {beginning_of_query} {self.config["cdc_metadata_schema"]}.captured_tables
                 (schema_name varchar, table_name varchar, created_at timestamp, updated_at timestamp, primary_keys varchar[]);
         """)
         self.connection.execute(f"""
-            CREATE TABLE IF NOT EXISTS {self.config["cdc_metadata_schema"]}.source_columns (
+            {beginning_of_query} {self.config["cdc_metadata_schema"]}.source_columns (
             table_catalog varchar, table_schema varchar, table_name varchar, column_name varchar, data_type varchar, column_default varchar, is_nullable boolean, primary_key boolean
             );
         """)
@@ -123,11 +137,6 @@ class DuckDBWarehouse(AbstractWarehouse):
     def create_cdc_stream(self, table_info):
         pass
 
-    def get_changes(self, table_info):
-        pass
-
-    def get_full_table_name(self, table_info):
-        return f"{table_info["schema"]}.{table_info["table"]}"
 
     def get_stream_name(self, table_info):
         pass
