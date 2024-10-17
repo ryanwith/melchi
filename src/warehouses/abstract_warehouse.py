@@ -5,6 +5,8 @@ class AbstractWarehouse(ABC):
     def __init__(self, warehouse_type):
         self.warehouse_type = warehouse_type
 
+    # creates a connection to a data warehouse and preps it for querying
+    # sets session variables and creates cursors as required
     @abstractmethod
     def connect(self):
         pass
@@ -25,10 +27,26 @@ class AbstractWarehouse(ABC):
     def rollback_transaction(self):
         pass
 
+    # input: table_info dict including the following strings:
+        # table 
+        # schema
+        # database (optional, included if the warehouse uses databases)
+    # output: an array of dictionaries containing column data.  includes the following:
+        # name: string
+        # type: string
+        # nullable: boolean
+        # default_value: string
+        # primary_key: boolean
     @abstractmethod
     def get_schema(self, table_info):
         pass
 
+
+    # input: table_info dict, source_schema, target_schema
+    # output:
+        # creates a table with the target_schema in the target_warehouse
+        # updates the table table_info in the target warehouse with metadata
+        # updates the table source_columns in the target warehouse with the table's schema int he source warehouse
     @abstractmethod
     def create_table(self, table_info, source_schema, target_schema):
         pass
