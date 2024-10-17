@@ -15,7 +15,7 @@ def transfer_schema(config, tables=None):
         try:
             target_warehouse.begin_transaction()
             # creates the tables needed for tracking CDC
-            target_warehouse.setup_target_environment()
+            target_warehouse.setup_environment()
             for table_info in tables:
                 source_schema = source_warehouse.get_schema(table_info)
                 target_schema = source_warehouse.map_schema_to(table_info, config.target_type)
