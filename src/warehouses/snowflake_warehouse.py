@@ -9,6 +9,7 @@ class SnowflakeWarehouse(AbstractWarehouse):
         self.connection = None
         self.cursor = None
 
+    # sets the role and compute warehouse for the session
     def connect(self):
         self.connection = snowflake.connector.connect(**self.config)
         self.cursor = self.connection.cursor()
