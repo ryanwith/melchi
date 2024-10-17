@@ -119,10 +119,8 @@ class DuckDBWarehouse(AbstractWarehouse):
     def setup_target_environment(self):
         self.connection.execute(f"CREATE SCHEMA IF NOT EXISTS {self.config["cdc_metadata_schema"]};")
         if self.replace_existing_tables() == True:
-            print("REPLACE ECISTING IS TRUE")
             beginning_of_query = "CREATE OR REPLACE TABLE"
         else:
-            print("REPLACE EXISTING IS FALSE")
             beginning_of_query = "CREATE TABLE IF NOT EXISTS"
         self.connection.execute(f"""
             {beginning_of_query} {self.config["cdc_metadata_schema"]}.captured_tables

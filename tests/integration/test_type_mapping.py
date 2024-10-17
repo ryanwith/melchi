@@ -14,18 +14,37 @@ def test_config():
     # Load your test configuration
     return Config(config_path='tests/config/snowflake_to_duckdb.yaml')
 
-def get_test_tables(test_config):
-    test_tables = [{
-        "schema_location": "data_generators/snowflake/no_primary_keys.csv",
+def get_test_tables():
+    test_tables = [
+    {
+        "schema_location": "data_generators/snowflake/test_table_schemas/no_pk.csv",
         "table_info": {
-            "database": test_config.source_config['cdc_schema'].split(".")[0], 
-            "schema": test_config.source_config['cdc_schema'].split(".")[1], 
-            "table": "TEST_TYPES_TABLE"}
-    }]
+            "database": "test_melchi_db", 
+            "schema": "test_melchi_schema", 
+            "table": "no_pk"
+        }
+    },
+    {
+        "schema_location": "data_generators/snowflake/test_table_schemas/no_pk.csv",
+        "table_info": {
+            "database": "test_melchi_db", 
+            "schema": "test_melchi_schema", 
+            "table": "one_pk"
+        }
+    },
+    {
+        "schema_location": "data_generators/snowflake/test_table_schemas/no_pk.csv",
+        "table_info": {
+            "database": "test_melchi_db", 
+            "schema": "test_melchi_schema", 
+            "table": "two_pk"
+        }
+    }
+    ]
     return test_tables
 
 def create_source_tables(test_config):
-    test_tables = get_test_tables(test_config)
+    test_tables = get_test_tables()
     
     # Create source and target warehouse connections
     source_warehouse = WarehouseFactory.create_warehouse(test_config.source_type, test_config.source_config)
@@ -51,6 +70,7 @@ def create_source_tables(test_config):
                 primary_key = " PRIMARY KEY" if row.get('primary_key') == 'Y' else ""
                 columns.append(f"\"{column_name}\" {column_type}{primary_key}")
             table_name = source_warehouse.get_full_table_name(table_info)
+            print(table_name)
             create_table_sql = f"CREATE OR REPLACE TABLE {table_name} ({', '.join(columns)})"
             source_warehouse.execute_query(create_table_sql)
 
@@ -61,7 +81,7 @@ def create_source_tables(test_config):
         target_warehouse.disconnect()
 
 def insert_generated_data(test_config):
-    test_tables = get_test_tables(test_config)
+    test_tables = get_test_tables()
     
     # Create source and target warehouse connections
     source_warehouse = WarehouseFactory.create_warehouse(test_config.source_type, test_config.source_config)

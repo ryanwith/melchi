@@ -7,7 +7,7 @@ source:
   password: ${TEST_SNOWFLAKE_PASSWORD}
   warehouse: ${TEST_SNOWFLAKE_WAREHOUSE}
   database: test_melchi_db
-  cdc_schema: test_melchi_db.test_melchi_schema
+  cdc_schema: test_melchi_db.cdc_schema
   role: ${TEST_SNOWFLAKE_ROLE}
   cdc_strategy: cdc_streams
   replace_existing: true
@@ -24,6 +24,6 @@ tables_config:
 default_config:
   batch_size: 1000
 
-test_scenarios:
-  - name: basic_types_default
-    type_mapping: no_primary_keys.csv
+# test_scenarios:
+#   - name: basic_types_default
+#     type_mapping: no_primary_keys.csv
