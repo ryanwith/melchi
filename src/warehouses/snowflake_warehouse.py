@@ -1,6 +1,8 @@
 import snowflake.connector
 import pandas as pd
 from .abstract_warehouse import AbstractWarehouse
+from ..utils.table_config import get_tables_to_transfer
+
 
 class SnowflakeWarehouse(AbstractWarehouse):
     def __init__(self, config):
@@ -50,7 +52,28 @@ class SnowflakeWarehouse(AbstractWarehouse):
         results = self.get_data(table_name)
         return pd.DataFrame(results, columns=[desc[0] for desc in self.cursor.description])
         
-    
+    def insert_data(self, table_name, data):
+        # Implementation for inserting data into Snowflake
+        pass
+
+    def setup_environment(self, tables_to_transfer = None):
+        if self.config["warehouse_role"] == "TARGET":
+            raise NotImplementedError(f"Snowflake is not yet supported as a target environment")
+        elif self.config["warehouse_role"] == "SOURCE":
+            self.setup_source_environment(tables_to_transfer)
+        else:
+            raise ValueError(f"Unknown warehouse role: {self.config["warehoues_role"]}")
+
+    def setup_source_environment(self, tables_to_transfer):
+        if tables_to_transfer == None:
+            raise Exception("No tables to transfer found")
+
+        if self.config["cdc_strategy"] == "cdc_streams":
+            for table_info in tables_to_transfer:
+                self.create_cdc_stream(table_info)
+        else:
+            raise ValueError(f"Invalid or no cdc_strategy provided")
+
     def get_cdc_data(self, table_info):
         stream_processing_table_name = self.get_stream_processing_table_name(table_info)
         stream_name = self.get_stream_name(table_info)
@@ -64,10 +87,6 @@ class SnowflakeWarehouse(AbstractWarehouse):
     def cleanup_cdc_for_table(self, table_info):
         stream_processing_table_name = self.get_stream_processing_table_name(table_info)
         self.cursor.execute(f"TRUNCATE TABLE {stream_processing_table_name}")
-
-    def insert_data(self, table_name, data):
-        # Implementation for inserting data into Snowflake
-        pass
 
     def setup_target_environment(self):
         pass

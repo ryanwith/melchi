@@ -26,7 +26,6 @@ def get_test_tables(test_config):
 
 def create_source_tables(test_config):
     test_tables = get_test_tables(test_config)
-    print(test_tables)
     
     # Create source and target warehouse connections
     source_warehouse = WarehouseFactory.create_warehouse(test_config.source_type, test_config.source_config)

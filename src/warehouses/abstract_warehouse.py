@@ -41,7 +41,6 @@ class AbstractWarehouse(ABC):
     def get_schema(self, table_info):
         pass
 
-
     # input: table_info dict, source_schema, target_schema
     # output:
         # creates a table with the target_schema in the target_warehouse
@@ -51,20 +50,25 @@ class AbstractWarehouse(ABC):
     def create_table(self, table_info, source_schema, target_schema):
         pass
 
+    # input: table you want to get data from
+    # output: returns alls records in the specified table
     @abstractmethod
     def get_data(self, table_name):
         pass
 
+    # input: table you want to get data from
+    # output: all records in that table as a data frame
+    @abstractmethod
+    def get_data_as_df(self, table_name):
+        pass
+    
     @abstractmethod
     def insert_data(self, table_name, data):
         pass
 
+    # sets up a warehouse environment as a source or target based on the config
     @abstractmethod
-    def get_data_as_df(self, table_name):
-        pass
-
-    @abstractmethod
-    def setup_target_environment(self):
+    def setup_environment(self, tables_to_transfer = None):
         pass
 
     @abstractmethod

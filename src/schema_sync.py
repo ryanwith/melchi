@@ -19,8 +19,6 @@ def transfer_schema(config, tables=None):
             for table_info in tables:
                 source_schema = source_warehouse.get_schema(table_info)
                 target_schema = source_warehouse.map_schema_to(table_info, config.target_type)
-                pp(source_schema[0])
-                pp(target_schema[0])
                 target_warehouse.create_table(table_info, source_schema, target_schema )
             target_warehouse.commit_transaction()
         except Exception as e:

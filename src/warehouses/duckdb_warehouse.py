@@ -35,7 +35,6 @@ class DuckDBWarehouse(AbstractWarehouse):
         primary_keys = []
         # create a schema if needed
         self.connection.execute(f"CREATE SCHEMA IF NOT EXISTS {table_info["schema"]}")
-        print(target_schema)
         # build a list of primary keys
         for column in target_schema:
             if column["primary_key"] == True:
@@ -101,6 +100,14 @@ class DuckDBWarehouse(AbstractWarehouse):
         # Implementation for inserting data into DuckDB
         pass
 
+    def setup_environment(self):
+        if self.config["warehouse_role"] == "TARGET":
+            self.setup_target_environment()
+        elif self.config["warehouse_role"] == "SOURCE":
+            raise NotImplementedError(f"DuckDB is not yet supported as a source")
+        else:
+            raise ValueError(f"Unknown warehouse role: {self.config["warehoues_role"]}")
+    
     def setup_target_environment(self):
         self.connection.execute(f"CREATE SCHEMA IF NOT EXISTS {self.config["cdc_metadata_schema"]};")
         self.connection.execute(f"""
@@ -144,7 +151,6 @@ class DuckDBWarehouse(AbstractWarehouse):
                 WHERE melchi_metadata_action = 'DELETE'
             );
         """
-        print(delete_sql_statement)
         insert_sql_statement = f"""INSERT INTO {full_table_name}
             SELECT {formatted_columns} FROM {temp_table_name}
             WHERE melchi_metadata_action = 'INSERT'
@@ -162,7 +168,6 @@ class DuckDBWarehouse(AbstractWarehouse):
     
     def get_primary_keys(self, table_info):
         captured_tables = f"{self.get_metadata_schema()}.captured_tables"
-        print(captured_tables)
         get_primary_keys_query = f"""
             SELECT primary_keys FROM {captured_tables}
                 WHERE table_name = '{table_info["table"]}' and schema_name = '{table_info["schema"]}'
