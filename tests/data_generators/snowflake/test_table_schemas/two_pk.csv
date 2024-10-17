@@ -1,7 +1,7 @@
 ﻿column_name,column_type,primary_key
 number_test_col,NUMBER,
-decimal_test_col,"NUMBER(38,10)",Y
-decimal_test_col2,"NUMBER(38,10)",Y
+decimal_test_col,"NUMBER(38,10)",
+decimal_test_col2,"NUMBER(38,10)",
 numeric_test_col,NUMERIC,Y
 int_test_col,INT,Y
 integer_test_col,INTEGER,

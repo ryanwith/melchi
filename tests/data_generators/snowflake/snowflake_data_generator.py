@@ -124,3 +124,18 @@ def generate_insert_into_select_statements(table_name, data):
         individual_statement = f"INSERT INTO {table_name} SELECT {", ".join(formatted_values)};"
         insert_into_select_statements.append(individual_statement)
     return insert_into_select_statements
+
+def format_columns_for_snowflake(type_mappings):
+    pks = []
+    columns = []
+
+    for _, col in type_mappings.iterrows():
+        col_statement = f"{col["column_name"]} {col["column_type"]}"
+        columns.append(col_statement)
+        if col["primary_key"] == "Y":
+            pks.append(col["column_name"])
+    
+    if len(pks) > 0:
+        columns.append(f"PRIMARY KEY ({", ".join(pks)})")
+    
+    return ", ".join(columns)

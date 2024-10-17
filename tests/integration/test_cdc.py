@@ -1,5 +1,4 @@
 import pytest
-import pprint
 import pandas as pd
 from pathlib import Path
 from src.config import Config
@@ -7,7 +6,7 @@ from src.warehouses.warehouse_factory import WarehouseFactory
 from src.schema_sync import transfer_schema
 from src.source_setup import setup_source
 from src.data_sync import sync_data
-from tests.data_generators.snowflake.snowflake_data_generator import generate_insert_into_select_statements, generate_snowflake_data, format_columns_for_snowflake
+from tests.data_generators.snowflake.snowflake_data_generator import generate_insert_statement, generate_insert_into_select_statements, generate_snowflake_data
 from tests.config.config import get_test_tables
 
 @pytest.fixture
@@ -30,12 +29,21 @@ def create_source_tables(test_config):
             csv_path = Path(__file__).parent.parent / table["schema_location"]
             type_mappings = pd.read_csv(csv_path)
             table_info = table["table_info"]
+
             table_name = source_warehouse.get_full_table_name
+
             # Create test table in Snowflake
+
+            columns = []
+            for _, row in type_mappings.iterrows():
+                column_name = row['column_name']
+                column_type = row['column_type']
+                primary_key = " PRIMARY KEY" if row.get('primary_key') == 'Y' else ""
+                columns.append(f"\"{column_name}\" {column_type}{primary_key}")
             table_name = source_warehouse.get_full_table_name(table_info)
             create_schema_sql = f"CREATE SCHEMA IF NOT EXISTS {table_info["schema"]}"
             source_warehouse.execute_query(create_schema_sql)
-            create_table_sql = f"CREATE OR REPLACE TABLE {table_name} ({format_columns_for_snowflake(type_mappings)})"
+            create_table_sql = f"CREATE OR REPLACE TABLE {table_name} ({', '.join(columns)})"
             source_warehouse.execute_query(create_table_sql)
 
     finally:
