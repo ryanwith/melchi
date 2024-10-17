@@ -91,12 +91,12 @@ def generate_snowflake_data(num_rows = 50):
             {'key': f'value_{i}'},  # VARIANT
             {'nested': {'key': f'value_{i}'}},  # OBJECT
             [i, i+1, i+2],  # ARRAY
-            Point(np.random.uniform(-180, 180), np.random.uniform(-90, 90)).wkt,  # GEOGRAPHY
-            Point(np.random.uniform(-180, 180), np.random.uniform(-90, 90)).wkt,  # GEOMETRY
+            # Point(np.random.uniform(-180, 180), np.random.uniform(-90, 90)).wkt,  # GEOGRAPHY snowflake streams do not support geography
+            # Point(np.random.uniform(-180, 180), np.random.uniform(-90, 90)).wkt,  # GEOMETRY snowflake streams do not support geometry
             f"VECTOR_TO_FOLLOW::::{np.random.rand(256).tolist()}::VECTOR(FLOAT, 256)"  # VECTOR_FLOAT_256
         ]
         data.append(row)
-
+    
     return data
 
 def generate_insert_statement(table_name, data):
@@ -139,3 +139,20 @@ def format_columns_for_snowflake(type_mappings):
         columns.append(f"PRIMARY KEY ({", ".join(pks)})")
     
     return ", ".join(columns)
+
+def get_random_records_sql(table_name, num, cols = []):
+    if len(cols) == 0:
+        cols.append("$1")
+    select_query = f"""
+        SELECT {", ".join(cols)} FROM {table_name} 
+        ORDER BY RANDOM() 
+    """
+    return select_query
+
+def generate_delete_query(table_name, ids, id_col_name = "$1"):
+    formatted_ids = ", ".join(str(id) for id in ids)
+    return f"DELETE FROM {table_name} WHERE {id_col_name} in ({formatted_ids});"
+
+def generate_update_query(table_name, ids, column_to_update, value_to_update_to, id_col_name = "$1"):
+    formatted_ids = ", ".join(str(id) for id in ids)
+    return f"UPDATE {table_name} SET {column_to_update} = {value_to_update_to} WHERE {id_col_name} IN ({formatted_ids})"

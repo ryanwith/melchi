@@ -1,5 +1,5 @@
 import pytest
-import pprint
+import random
 import pandas as pd
 from pathlib import Path
 from src.config import Config
@@ -7,7 +7,14 @@ from src.warehouses.warehouse_factory import WarehouseFactory
 from src.schema_sync import transfer_schema
 from src.source_setup import setup_source
 from src.data_sync import sync_data
-from tests.data_generators.snowflake.snowflake_data_generator import generate_insert_into_select_statements, generate_snowflake_data, format_columns_for_snowflake
+from tests.data_generators.snowflake.snowflake_data_generator import (
+    generate_insert_into_select_statements, 
+    generate_snowflake_data, 
+    format_columns_for_snowflake, 
+    get_random_records_sql,
+    generate_delete_query,
+    generate_update_query
+)
 from tests.config.config import get_test_tables
 
 @pytest.fixture
@@ -58,7 +65,7 @@ def insert_generated_data(test_config):
         for table in test_tables:
             table_info = table["table_info"]
             table_name = source_warehouse.get_full_table_name(table_info)
-            insert_statements = generate_insert_into_select_statements(table_name, generate_snowflake_data(5))
+            insert_statements = generate_insert_into_select_statements(table_name, generate_snowflake_data(20))
             # insert_sql = generate_insert_statement(table_name, generate_snowflake_data(1))
             for statement in insert_statements:
                 source_warehouse.execute_query(statement)
@@ -69,6 +76,49 @@ def insert_generated_data(test_config):
         source_warehouse.disconnect()
         target_warehouse.disconnect()
 
+def update_records(test_config, num = 10):
+    test_tables = get_test_tables()
+    
+    # Create source and target warehouse connections
+    source_warehouse = WarehouseFactory.create_warehouse(test_config.source_type, test_config.source_config)
+
+    try:
+        source_warehouse.connect()
+        source_warehouse.begin_transaction()
+        queries_to_execute = []
+
+        for table in test_tables:
+
+            table_info = table["table_info"]
+            table_name = source_warehouse.get_full_table_name(table_info)
+
+            random_records = source_warehouse.execute_query(get_random_records_sql(table_name, num), True)
+            
+            to_be_deleted = []
+            to_be_updated = []
+            for fate in range(num):
+                if fate > 6:
+                    to_be_deleted.append(random_records[fate][0])
+                else:
+                    to_be_updated.append(random_records[fate][0])
+            delete_query = generate_delete_query(table_name, to_be_deleted, "$1")
+            update_query = generate_update_query(table_name, to_be_updated, "timestamp_ltz_test_col", "current_timestamp", "$1")
+            insert_queries = generate_insert_into_select_statements(table_name, generate_snowflake_data(5))
+
+            queries_to_execute += insert_queries + [delete_query, update_query]
+        
+        for query in queries_to_execute:
+            source_warehouse.execute_query(query)
+
+        source_warehouse.commit_transaction()
+    except Exception as e:
+        source_warehouse.rollback_transaction()
+        print(f"Error changing test data: {e}")
+        raise
+
+    finally:
+        # Disconnect warehouses
+        source_warehouse.disconnect()
 
 def test_setup_source(test_config):
     create_source_tables(test_config)
@@ -78,5 +128,9 @@ def test_setup_source(test_config):
 def test_transfer_schema(test_config):
     transfer_schema(test_config)
 
-def test_sync_data(test_config):
+def test_initial_data_sync(test_config):
+    sync_data(test_config)
+    
+def test_cdc(test_config):
+    update_records(test_config)
     sync_data(test_config)

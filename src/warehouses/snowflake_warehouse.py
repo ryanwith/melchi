@@ -135,8 +135,10 @@ class SnowflakeWarehouse(AbstractWarehouse):
         table = table_info["table"]
         return f"{self.config["cdc_schema"]}.{database}${schema}${table}_processing"
     
-    def execute_query(self, query_text):
+    def execute_query(self, query_text, return_results = False):
         self.cursor.execute(query_text)
+        if return_results:
+            return self.cursor.fetchall()
 
     def fetch_results(self, num = None):
         if num is None:

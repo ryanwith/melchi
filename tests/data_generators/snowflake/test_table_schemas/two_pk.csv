@@ -1,9 +1,9 @@
 ﻿column_name,column_type,primary_key
 number_test_col,NUMBER,
-decimal_test_col,"NUMBER(38,10)",
-decimal_test_col2,"NUMBER(38,10)",
-numeric_test_col,NUMERIC,Y
-int_test_col,INT,Y
+decimal_test_col,"NUMBER(38,10)",Y
+decimal_test_col2,"NUMBER(38,10)",Y
+numeric_test_col,NUMERIC,
+int_test_col,INT,
 integer_test_col,INTEGER,
 bigint_test_col,BIGINT,
 smallint_test_col,SMALLINT,
@@ -33,6 +33,4 @@ timestamp_tz_test_col,TIMESTAMP_TZ,
 variant_test_col,VARIANT,
 object_test_col,OBJECT,
 array_test_col,ARRAY,
-geography_test_col,GEOGRAPHY,
-geometry_test_col,GEOMETRY,
 vector_float_256,"VECTOR(float, 256)",

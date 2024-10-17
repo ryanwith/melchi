@@ -33,6 +33,4 @@ timestamp_tz_test_col,TIMESTAMP_TZ,
 variant_test_col,VARIANT,
 object_test_col,OBJECT,
 array_test_col,ARRAY,
-geography_test_col,GEOGRAPHY,
-geometry_test_col,GEOMETRY,
-vector_float_256,"VECTOR(float, 256)",
+vector_float_256,"VECTOR(float, 256)"
