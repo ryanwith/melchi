@@ -15,7 +15,7 @@ source:
 target:
   type: duckdb
   database: ${DUCKDB_DATABASE_PATH}
-  cdc_metadata_schema: test_melchi_schema
+  cdc_metadata_schema: cdc_schema
   replace_existing: true
 
 tables_config:

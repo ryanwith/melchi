@@ -47,7 +47,7 @@ def format_value(value):
     else:
         return f"'{value}'"
     
-def generate_no_primary_keys_data(num_rows = 50):
+def generate_snowflake_data(num_rows = 50):
     def safe_large_float():
         sign = 1 if np.random.random() > 0.5 else -1
         exponent = np.random.randint(0, 308)

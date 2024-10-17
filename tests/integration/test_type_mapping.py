@@ -7,7 +7,7 @@ from src.warehouses.warehouse_factory import WarehouseFactory
 from src.schema_sync import transfer_schema
 from src.source_setup import setup_source
 from src.data_sync import sync_data
-from tests.data_generators.snowflake.snowflake_data_generator import generate_insert_statement, generate_insert_into_select_statements, generate_no_primary_keys_data
+from tests.data_generators.snowflake.snowflake_data_generator import generate_insert_statement, generate_insert_into_select_statements, generate_snowflake_data
 
 @pytest.fixture
 def test_config():
@@ -70,7 +70,8 @@ def create_source_tables(test_config):
                 primary_key = " PRIMARY KEY" if row.get('primary_key') == 'Y' else ""
                 columns.append(f"\"{column_name}\" {column_type}{primary_key}")
             table_name = source_warehouse.get_full_table_name(table_info)
-            print(table_name)
+            create_schema_sql = f"CREATE SCHEMA IF NOT EXISTS {table_info["schema"]}"
+            source_warehouse.execute_query(create_schema_sql)
             create_table_sql = f"CREATE OR REPLACE TABLE {table_name} ({', '.join(columns)})"
             source_warehouse.execute_query(create_table_sql)
 
@@ -94,8 +95,8 @@ def insert_generated_data(test_config):
         for table in test_tables:
             table_info = table["table_info"]
             table_name = source_warehouse.get_full_table_name(table_info)
-            insert_statements = generate_insert_into_select_statements(table_name, generate_no_primary_keys_data(5))
-            # insert_sql = generate_insert_statement(table_name, generate_no_primary_keys_data(1))
+            insert_statements = generate_insert_into_select_statements(table_name, generate_snowflake_data(5))
+            # insert_sql = generate_insert_statement(table_name, generate_snowflake_data(1))
             for statement in insert_statements:
                 source_warehouse.execute_query(statement)
 

@@ -1,2 +1,4 @@
 database,schema,table
-test_melchi_db,test_melchi_schema,test_types_table
+test_melchi_db,test_melchi_schema,no_pk
+test_melchi_db,test_melchi_schema,one_pk
+test_melchi_db,test_melchi_schema,two_pk
