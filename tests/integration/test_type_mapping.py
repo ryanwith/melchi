@@ -18,7 +18,7 @@ from tests.data_generators.snowflake.snowflake_data_generator import (
     generate_update_query
 )
 from tests.config.config import get_test_tables
-from src.generate_permissions import generate_snowflake_source_permissions, write_permissions_to_file
+from src.source_sql_generator import generate_snowflake_source_permissions, write_permissions_to_file
 
 @pytest.fixture
 def test_config():
@@ -124,9 +124,6 @@ def update_records(test_config, num = 10):
     finally:
         # Disconnect warehouses
         source_warehouse.disconnect()
-
-def test_generate_permissions(test_config):
-    write_permissions_to_file(generate_snowflake_source_permissions(test_config), "tests/output/permissions.sql")
 
 def test_seed_db(test_config):
     create_source_tables(test_config)

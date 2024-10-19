@@ -1,112 +1,204 @@
 <!-- readme.md -->
+# Melchi
 
-## Overview  📚
+## Overview  📚
 
-<p>Melchi lets you stream live data out of Snowflake and into DuckDB without building and managing custom ETL pipelines.  Simply choose which tables you want to replicate and Melchi will hadnle the rest.</p>
+Melchi is a data synchronization tool that streamlines the process of replicating data from Snowflake to DuckDB in near real-time. It eliminates the need to build and manage custom ETL pipelines, saving time and resources for data teams.
 
-### How it Works
+Here's how Melchi works:
 
-<p>You provide a list of the tables you're looking to stream updates out of.  Melchi then does the following:</p>
-<ol>
-<li><strong>Creates equivalent tables in your target warehouse.</strong>  It maps your table's schema to your target warehouse determining the column types and creates these tables there.</li>
-<li><strong>Creates CDC tables in your source warehouse.</strong>  It creates a stream and permanent table in your source warehouse so that it can track what data has changed and what has already been updated in your target.</li>
-<li><strong>Replicates your data in your target warehouse.</strong>  Each time you run this it checks for changes since the last update and moves it into your target warehouse.</li>
-</ol>
+1. You provide a list of Snowflake tables you want to replicate.
+2. Run the setup command in the terminal.
+3. Melchi automatically:
+   - Creates equivalent tables in DuckDB based on your Snowflake table schemas
+   - Sets up streams and change tracking tables in Snowflake for each replicated table
+   - Creates change tracking tables in DuckDB to monitor update times
 
-## Install  📥
+Once set up, simply run the `sync_data` command whenever you need to update. Melchi efficiently checks Snowflake for inserts, updates, and deletes, and applies these changes to DuckDB.
 
-```bash
-git clone https://github.com/ryanwith/melchi.git
+All you need to do is set up a role in Snowflake with the appropriate permissions. Melchi handles the rest, providing a low-maintenance, efficient solution for keeping your DuckDB instance in sync with Snowflake.
+
+## Installation  📥
+
+### Prerequisites
+
+- Python 3.7 or later
+- Git
+
+### Steps
+
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/ryanwith/melchi.git
+   cd melchi
+   ```
+
+2. Set up a virtual environment:
+   ```bash
+   python3 -m venv venv
+   ```
+
+3. Activate the virtual environment:
+   - On macOS and Linux:
+     ```bash
+     source venv/bin/activate
+     ```
+   - On Windows:
+     ```bash
+     venv\Scripts\activate
+     ```
+
+4. Install dependencies:
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+5. Set up environment variables:
+   Create a `.env` file in the project root directory and add your Snowflake and DuckDB credentials:
+   ```
+   SNOWFLAKE_ACCOUNT=your_account
+   SNOWFLAKE_USER=your_username
+   SNOWFLAKE_PASSWORD=your_password
+   DUCKDB_DATABASE_PATH=/path/to/your/duckdb/database.db
+   ```
+
+6. Verify the installation:
+   ```bash
+   python main.py --help
+   ```
+   If you see the help message with available commands, Melchi is installed correctly.
+
+### Troubleshooting
+
+If you encounter any issues during installation, please check the following:
+- Ensure you're using Python 3.7 or later
+- Make sure all environment variables are set correctly
+- Check that you have the necessary permissions to install packages and create directories
+
+For more detailed troubleshooting, please refer to our [documentation](link_to_docs) or open an issue on our GitHub repository.
+
+## Usage
+
+[Add usage instructions here]
+
+## Configuration
+
+Melchi uses a YAML configuration file to manage connections and specify which tables to replicate. Follow these steps to set up your configuration:
+
+1. Create a `config.yaml` file in the project root directory.
+
+2. Add the following sections to your `config.yaml`:
+
+   ```yaml
+   source:
+     type: snowflake
+     account: ${SNOWFLAKE_ACCOUNT_IDENTIFIER}
+     user: ${SNOWFLAKE_USER}
+     password: ${SNOWFLAKE_PASSWORD}
+     role: snowflake_role_to_use
+     warehouse: snowflake_warehouse_to_use
+     change_tracking_database: database_with_change_tracking_schema
+     change_tracking_schema: name_of_change_tracking_schema
+     cdc_strategy: cdc_streams
+
+   target:
+     type: duckdb
+     database: /path/to/your/local/duckdb/database.duckdb
+     change_tracking_schema: name_of_change_tracking_schema
+
+   tables_config:
+     path: "config/tables_to_transfer.csv"
+   ```
+
+   Replace placeholders with your actual Snowflake and DuckDB details.
+
+3. Create a `tables_to_transfer.csv` file in the `config` directory to specify which tables to replicate:
+
+   ```csv
+   database,schema,table
+   your_db,your_schema,table1
+   your_db,your_schema,table2
+   ```
+
+4. Set up environment variables in a `.env` file:
+
+   ```
+   SNOWFLAKE_ACCOUNT_IDENTIFIER=your_account
+   SNOWFLAKE_USER=your_username
+   SNOWFLAKE_PASSWORD=your_password
+   DUCKDB_DATABASE_PATH=/path/to/your/duckdb/database.db
+   ```
+
+Ensure all configuration files are properly set up before running Melchi.
+
+## Permissions
+
+To use Melchi effectively, you need to set up the correct permissions in Snowflake. Here's how to do it:
+
+1. Create a dedicated role in Snowflake for Melchi:
+
+   ```sql
+   USE ROLE SECURITYADMIN;
+   CREATE ROLE melchi_role;
+   ```
+
+2. Grant the necessary permissions to this role. You can do this manually or use Melchi's `generate_source_sql` feature to help you.
+
+### Manual Permission Setup
+
+If you prefer to set up permissions manually, you need to grant the following:
+
+- Usage on the warehouse
+- Usage on the databases and schemas containing the tables you want to replicate
+- Select permission on the tables you want to replicate
+- Create Table and Create Stream permissions on the change tracking schema
+
+For example:
+
+```sql
+GRANT USAGE ON WAREHOUSE your_warehouse TO ROLE melchi_role;
+GRANT USAGE ON DATABASE your_db TO ROLE melchi_role;
+GRANT USAGE ON SCHEMA your_db.your_schema TO ROLE melchi_role;
+GRANT SELECT ON TABLE your_db.your_schema.your_table TO ROLE melchi_role;
+GRANT CREATE TABLE, CREATE STREAM ON SCHEMA change_tracking_db.change_tracking_schema TO ROLE melchi_role;
 ```
 
-## Setup your environment
+### Using generate_permissions
 
-This project has some dependencies so you should set up a virtual environment to manage them.  One way to do this is with venv.  You can navigate to the melchi folder in the terminal and run the following to set it up.
+Melchi provides a `generate_permissions` feature to help you create the necessary SQL statements for setting up permissions. To use it:
 
-```bash
-python3 -m venv venv
+1. Ensure your `config.yaml` and `tables_to_transfer.csv` are correctly set up.
+
+2. Run the following command:
+
+   ```bash
+   python main.py generate_permissions
+   ```
+
+3. This will generate a file named `permissions.sql` in the `output` directory. Review this file to ensure it meets your security requirements.
+
+4. Execute the SQL statements in the generated file in your Snowflake account to set up the permissions.
+
+Remember to enable change tracking on the tables you want to replicate:
+
+```sql
+ALTER TABLE your_db.your_schema.your_table SET CHANGE_TRACKING = TRUE;
 ```
 
-You can then activate it.
+By following these steps, you'll have the necessary permissions set up in Snowflake for Melchi to operate effectively.
 
-```bash
-source venv/bin/activate
-```
+## Usage
 
-Once activated, you should install the dependencies in the requirements.txt file running the following.
+[Add usage information here]
 
-```bash
-pip install -r requirements.txt
-```
+## Contributing
 
-## Getting Started
+[Add contributing guidelines here]
 
-To start enable Melchi to connect to your Snowflake warehouse and move data to DuckDB you need 
-to provide some configuration data in config/config.yaml.  For sensitive data you should use env variables.
+## License
 
-### Configure your source warehouse parameters
+[Add license information here]
 
-```
-source:
-  type: snowflake
-  account: your_snowflake_account_identifier
-  user: your_snowflake_user
-  password: your_snowflake_role
-  role: melchi_role
-  warehouse: your_warehouse
-  cdc_strategy: cdc_streams
-  cdc_metadata_schema: cdc_db.cdc_schema
-  replace_existing: false
-```
-<strong>Type.</strong>  This is the type of warehouse you will be streaming data from.  For now, it must be set to snowflake.
-<strong>Account.</strong>  This is your <a href="https://docs.snowflake.com/en/user-guide/admin-account-identifier">snowflake account identifier</a>.
-<strong>User.</strong>  This is username this will use to connect to snowflake.
-<strong>Password.</strong>  This is the password you will use to connect to snowflake.  You should store this as an env variable.
-<strong>Role.</strong>  This is the role Melchi will use to read changes to your data and create all relevant metadata tables (one stream and one permanent table per table you're replicating).  It must have the following:
-<ul>
-<li>USAGE granted on all databases it will use</li>
-<li>SELECT granted on all tables/views you're replicating.</li>
-<li>USAGE granted on all schemas and databases containing these tables/views</li>
-<li>CREATE TABLE and CREATE STREAM on the cdc_metadata_schema that Melchi will use.   </li>
-<li>USAGE granted on the warehouse you provide.  </li>
-<li>Additionally, make sure you GRANT ROLE to the USER you provided above.
-</ul>
-<strong>Warehouse.</strong>  This is the warehouse Melchi will use for all operations.
-<strong>CDC Strategy.</strong>  Must be set to cdc_streams for now.  More strategies may come out in the future.
-<strong>CDC metadata schema.</strong>  This is the schema that melchi will create streams and permanent tables needed to capture changes.  It must include the database name as well.  It can be a schema you're streaming data from.  
-<strong>Replace existing.</strong>  Recommend setting this to false.  If set to true, Melchi will replace all streams/tables it created in your source warehouse as well as the tables in your target warehouse.  Note--this will not affect the tables you're replicating.
+## Support
 
-<strong>Note. All tables you want to replicate must have change_tracking set to true.</strong>  You can do this by running the following command for each table.
-
-```
-ALTER TABLE table_name SET CHANGE_TRACKING = TRUE;
-```
-
-### Configure your target warehouse parameters
-
-```
-target:
-  type: duckdb
-  database: path/to/your/duckdb/database.duckdb
-  cdc_metadata_schema: melchi
-  replace_existing: true
-```
-<strong>Type.</strong>  Must be set to duckdb for now.
-<strong>Database.</strong>  This is the path to your duckdb database.  You do not have to precreate it--it will be created automatically if it does not exists.
-<strong>CDC metadata schema.</strong>  This is the schema that Melchi will create metadata tables in.  It will have two tables: source_columns including how the columns are structured in your source warehouse and captured_tables including metadata about the tables that are replicated.
-<strong>Replace existing.</strong>  If set to true, Melchi will replace the replicated tables in your target warehouse.
-
-### Determine the tables you want replicate
-
-```
-tables_config:
-  path: "config/tables_to_transfer.csv"
-```
-
-Create a csv with the columns database, schema, and table.  Store that file in your project, e.g. in config, and set table_config.path in config.yaml to the path to this file.
-
-<strong>Note. All tables you want to replicate must have change_tracking set to true.</strong>  You can do this by running the following command for each table.
-
-```
-ALTER TABLE table_name SET CHANGE_TRACKING = TRUE;
-```
+[Add support information here]
