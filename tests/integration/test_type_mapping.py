@@ -1,3 +1,5 @@
+# tests/integration/test_type_mapping.py
+
 import pytest
 import random
 import pandas as pd
@@ -16,6 +18,7 @@ from tests.data_generators.snowflake.snowflake_data_generator import (
     generate_update_query
 )
 from tests.config.config import get_test_tables
+from src.generate_permissions import generate_snowflake_source_permissions, write_permissions_to_file
 
 @pytest.fixture
 def test_config():
@@ -27,11 +30,12 @@ def create_source_tables(test_config):
     
     # Create source and target warehouse connections
     source_warehouse = WarehouseFactory.create_warehouse(test_config.source_type, test_config.source_config)
-    target_warehouse = WarehouseFactory.create_warehouse(test_config.target_type, test_config.target_config)
+
 
     try:
         source_warehouse.connect()
-        target_warehouse.connect()
+        source_warehouse.execute_query(f"USE ROLE {source_warehouse.config["data_generation_role"]};")
+        source_warehouse.execute_query(f"USE DATABASE {source_warehouse.config["database"]};")
 
         for table in test_tables:
             csv_path = Path(__file__).parent.parent / table["schema_location"]
@@ -44,23 +48,24 @@ def create_source_tables(test_config):
             source_warehouse.execute_query(create_schema_sql)
             create_table_sql = f"CREATE OR REPLACE TABLE {table_name} ({format_columns_for_snowflake(type_mappings)})"
             source_warehouse.execute_query(create_table_sql)
-
+            change_tracking_sql = f"ALTER TABLE {table_name} SET CHANGE_TRACKING=TRUE;"
+            source_warehouse.execute_query(change_tracking_sql)
     finally:
 
         # Disconnect warehouses
         source_warehouse.disconnect()
-        target_warehouse.disconnect()
 
 def insert_generated_data(test_config):
     test_tables = get_test_tables()
     
     # Create source and target warehouse connections
     source_warehouse = WarehouseFactory.create_warehouse(test_config.source_type, test_config.source_config)
-    target_warehouse = WarehouseFactory.create_warehouse(test_config.target_type, test_config.target_config)
 
     try:
         source_warehouse.connect()
-        target_warehouse.connect()
+        source_warehouse.execute_query(f"USE ROLE {source_warehouse.config["data_generation_role"]};")
+        source_warehouse.execute_query(f"USE DATABASE {source_warehouse.config["database"]};")
+
 
         for table in test_tables:
             table_info = table["table_info"]
@@ -74,7 +79,6 @@ def insert_generated_data(test_config):
 
         # Disconnect warehouses
         source_warehouse.disconnect()
-        target_warehouse.disconnect()
 
 def update_records(test_config, num = 10):
     test_tables = get_test_tables()
@@ -84,6 +88,7 @@ def update_records(test_config, num = 10):
 
     try:
         source_warehouse.connect()
+        source_warehouse.execute_query(f"USE ROLE {source_warehouse.config["data_generation_role"]}")
         source_warehouse.begin_transaction()
         queries_to_execute = []
 
@@ -120,9 +125,14 @@ def update_records(test_config, num = 10):
         # Disconnect warehouses
         source_warehouse.disconnect()
 
-def test_setup_source(test_config):
+def test_generate_permissions(test_config):
+    write_permissions_to_file(generate_snowflake_source_permissions(test_config), "tests/output/permissions.sql")
+
+def test_seed_db(test_config):
     create_source_tables(test_config)
     insert_generated_data(test_config)
+
+def test_setup_source(test_config):
     setup_source(test_config)
 
 def test_transfer_schema(test_config):

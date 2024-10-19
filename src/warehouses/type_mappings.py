@@ -1,3 +1,5 @@
+# type_mappings.py
+
 import warnings
 
 class TypeMapper:

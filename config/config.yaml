@@ -1,3 +1,5 @@
+# config/config.yaml
+
 source:
   type: snowflake
   account: ${SNOWFLAKE_ACCOUNT_IDENTIFIER}
@@ -5,16 +7,15 @@ source:
   password: ${SNOWFLAKE_PASSWORD}
   role: melchi_db_admin
   warehouse: compute_wh
-  database: melchi_cdc_db
-  cdc_schema: melchi_cdc_db.streams
+  change_tracking_database: melchi_cdc_db
+  change_tracking_schema: streams
   cdc_strategy: cdc_streams
-  batch_size: 10000
   replace_existing: true
 
 target:
   type: duckdb
   database: ${DUCKDB_DATABASE_PATH}
-  cdc_metadata_schema: melchi
+  change_tracking_schema: melchi
   replace_existing: true
 
 tables_config:
@@ -23,7 +24,3 @@ tables_config:
 logging:
   level: ${LOG_LEVEL}
   file: ${LOG_FILE_PATH}
-
-# You can also include non-sensitive, hardcoded values
-batch_size: 1000
-retry_attempts: 3

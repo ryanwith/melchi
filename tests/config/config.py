@@ -1,9 +1,11 @@
+# tests/config/config.py
+
 def get_test_tables():
     test_tables = [
     {
         "schema_location": "data_generators/snowflake/test_table_schemas/no_pk.csv",
         "table_info": {
-            "database": "test_melchi_db", 
+            "database": "melchi_test_data", 
             "schema": "test_melchi_schema", 
             "table": "no_pk"
         }
@@ -11,7 +13,7 @@ def get_test_tables():
     {
         "schema_location": "data_generators/snowflake/test_table_schemas/one_pk.csv",
         "table_info": {
-            "database": "test_melchi_db", 
+            "database": "melchi_test_data", 
             "schema": "test_melchi_schema", 
             "table": "one_pk"
         }
@@ -19,7 +21,7 @@ def get_test_tables():
     {
         "schema_location": "data_generators/snowflake/test_table_schemas/two_pk.csv",
         "table_info": {
-            "database": "test_melchi_db", 
+            "database": "melchi_test_data", 
             "schema": "test_melchi_schema", 
             "table": "two_pk"
         }

@@ -1,4 +1,4 @@
 database,schema,table
-test_melchi_db,test_melchi_schema,no_pk
-test_melchi_db,test_melchi_schema,one_pk
-test_melchi_db,test_melchi_schema,two_pk
+melchi_test_data,test_melchi_schema,no_pk
+melchi_test_data,test_melchi_schema,one_pk
+melchi_test_data,test_melchi_schema,two_pk

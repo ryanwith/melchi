@@ -1,3 +1,5 @@
+# src/warehouses/snowflake_warehouse.py
+
 import snowflake.connector
 import pandas as pd
 from .abstract_warehouse import AbstractWarehouse
@@ -32,6 +34,9 @@ class SnowflakeWarehouse(AbstractWarehouse):
 
     def rollback_transaction(self):
         self.connection.rollback()
+
+    def get_change_tracking_schema(self):
+        return f"{self.config["change_tracking_database"]}.{self.config["change_tracking_schema"]}"
 
     def get_schema(self, table_info):
         self.cursor.execute(f"DESC TABLE {self.get_full_table_name(table_info)}")
@@ -127,13 +132,13 @@ class SnowflakeWarehouse(AbstractWarehouse):
         database = table_info["database"]
         schema = table_info["schema"]
         table = table_info["table"]
-        return f"{self.config["cdc_schema"]}.{database}${schema}${table}"
+        return f"{self.get_change_tracking_schema()}.{database}${schema}${table}"
     
     def get_stream_processing_table_name(self, table_info):
         database = table_info["database"]
         schema = table_info["schema"]
         table = table_info["table"]
-        return f"{self.config["cdc_schema"]}.{database}${schema}${table}_processing"
+        return f"{self.get_change_tracking_schema()}.{database}${schema}${table}_processing"
     
     def execute_query(self, query_text, return_results = False):
         self.cursor.execute(query_text)

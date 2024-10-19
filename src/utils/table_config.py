@@ -1,3 +1,5 @@
+# src/utils/table_config.py
+
 import csv
 import os
 

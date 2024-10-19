@@ -1,3 +1,5 @@
+# src/config.py
+
 import yaml
 import os
 from dotenv import load_dotenv

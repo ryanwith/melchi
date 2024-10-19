@@ -1,4 +1,4 @@
-# tests/test_config/snowflake_to_duckdb.yaml
+# tests/config/snowflake_to_duckdb.yaml
 
 source:
   type: snowflake
@@ -6,16 +6,18 @@ source:
   user: ${TEST_SNOWFLAKE_USER}
   password: ${TEST_SNOWFLAKE_PASSWORD}
   warehouse: ${TEST_SNOWFLAKE_WAREHOUSE}
-  database: test_melchi_db
-  cdc_schema: test_melchi_db.cdc_schema
+  database: melchi_test_data
+  change_tracking_database: cdc_metadata_tables
+  change_tracking_schema: melchi_metadata
   role: ${TEST_SNOWFLAKE_ROLE}
   cdc_strategy: cdc_streams
   replace_existing: true
+  data_generation_role: data_generation_role
 
 target:
   type: duckdb
   database: ${DUCKDB_DATABASE_PATH}
-  cdc_metadata_schema: cdc_schema
+  change_tracking_schema: cdc_schema
   replace_existing: true
 
 tables_config:

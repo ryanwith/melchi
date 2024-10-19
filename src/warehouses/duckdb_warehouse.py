@@ -1,3 +1,5 @@
+# src/warehouses/duckdb_warehouse.py
+
 import duckdb
 import datetime
 from .abstract_warehouse import AbstractWarehouse
@@ -23,6 +25,9 @@ class DuckDBWarehouse(AbstractWarehouse):
 
     def rollback_transaction(self):
         self.connection.rollback()
+
+    def get_change_tracking_schema(self):
+        return self.config["change_tracking_schema"]
 
     def get_schema(self, table_info):
         result = self.connection.execute(f"PRAGMA table_info('{self.get_full_table_name(table_info)}')")
@@ -74,12 +79,12 @@ class DuckDBWarehouse(AbstractWarehouse):
 
         update_logs = [
             f"""
-            INSERT INTO {self.get_metadata_schema()}.captured_tables VALUES (
+            INSERT INTO {self.get_change_tracking_schema()}.captured_tables VALUES (
                 '{table_info["schema"]}', '{table_info["table"]}', '{current_timestamp}', '{current_timestamp}', {self.convert_list_to_duckdb_syntax(primary_keys)}
             );"""
             ,
             f"""
-            INSERT INTO {self.get_metadata_schema()}.source_columns VALUES
+            INSERT INTO {self.get_change_tracking_schema()}.source_columns VALUES
             {(",\n").join(source_columns)};
             """
             ]
@@ -114,17 +119,17 @@ class DuckDBWarehouse(AbstractWarehouse):
                 # the schema of the object in the source
                 # can be important for understanding how to query it
     def setup_target_environment(self):
-        self.connection.execute(f"CREATE SCHEMA IF NOT EXISTS {self.config["cdc_metadata_schema"]};")
+        self.connection.execute(f"CREATE SCHEMA IF NOT EXISTS {self.get_change_tracking_schema()};")
         if self.replace_existing_tables() == True:
             beginning_of_query = "CREATE OR REPLACE TABLE"
         else:
             beginning_of_query = "CREATE TABLE IF NOT EXISTS"
         self.connection.execute(f"""
-            {beginning_of_query} {self.config["cdc_metadata_schema"]}.captured_tables
+            {beginning_of_query} {self.get_change_tracking_schema()}.captured_tables
                 (schema_name varchar, table_name varchar, created_at timestamp, updated_at timestamp, primary_keys varchar[]);
         """)
         self.connection.execute(f"""
-            {beginning_of_query} {self.config["cdc_metadata_schema"]}.source_columns (
+            {beginning_of_query} {self.get_change_tracking_schema()}.source_columns (
             table_catalog varchar, table_schema varchar, table_name varchar, column_name varchar, data_type varchar, column_default varchar, is_nullable boolean, primary_key boolean
             );
         """)
@@ -171,7 +176,7 @@ class DuckDBWarehouse(AbstractWarehouse):
         return f"[{", ".join(list(map(lambda item: f"'{item}'", standard_list)))}]"
     
     def get_primary_keys(self, table_info):
-        captured_tables = f"{self.get_metadata_schema()}.captured_tables"
+        captured_tables = f"{self.get_change_tracking_schema()}.captured_tables"
         get_primary_keys_query = f"""
             SELECT primary_keys FROM {captured_tables}
                 WHERE table_name = '{table_info["table"]}' and schema_name = '{table_info["schema"]}'
@@ -188,7 +193,7 @@ class DuckDBWarehouse(AbstractWarehouse):
     
     def update_cdc_tracker(self, table_info):
         where_clause = f"WHERE table_name = '{table_info["table"]}' and schema_name = '{table_info["schema"]}'"
-        self.connection.execute(f"UPDATE {self.get_metadata_schema()}.captured_tables SET updated_at = current_timestamp {where_clause} ")
+        self.connection.execute(f"UPDATE {self.get_change_tracking_schema()}.captured_tables SET updated_at = current_timestamp {where_clause} ")
 
     def execute_query(self, query_text):
         self.connection.execute(query_text)

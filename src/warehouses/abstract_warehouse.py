@@ -1,3 +1,5 @@
+# src/warehouses/abstract_warehouse.py
+
 from abc import ABC, abstractmethod
 from .type_mappings import TypeMapper
 
@@ -98,8 +100,9 @@ class AbstractWarehouse(ABC):
     def fetch_results(self, num):
         pass    
 
-    def get_metadata_schema(self):
-        return self.config["cdc_metadata_schema"]
+    @abstractmethod
+    def get_change_tracking_schema(self):
+        pass
 
     def map_schema_to(self, table_info, target_warehouse_type):
         method_name = f"{self.warehouse_type}_to_{target_warehouse_type}"

@@ -1,3 +1,5 @@
+# warehouse_factory.py
+
 from .snowflake_warehouse import SnowflakeWarehouse
 from .duckdb_warehouse import DuckDBWarehouse
 
