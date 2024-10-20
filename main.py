@@ -41,7 +41,7 @@ from src.config import Config
 from src.schema_sync import transfer_schema
 from src.data_sync import sync_data
 from src.source_setup import setup_source
-from src.source_sql_generator import generate_source_permissions, generate_source_change_tracking_setup, write_to_file
+from src.source_sql_generator import generate_source_sql
 
 def main():
     parser = argparse.ArgumentParser(description="Data Warehouse Transfer Tool")
@@ -63,16 +63,11 @@ def main():
         print("Data sync started")
         sync_data(config)
     elif args.action == "generate_source_sql":
-        permissions_sql = generate_source_permissions(config)
-        write_to_file(permissions_sql, f"{args.output}/{config.source_type}_permissions.sql")
-        print(f"{config.source_type.capitalize()} permissions SQL written to {args.output}/{config.source_type}_permissions.sql")
-        
-        change_tracking_sql = generate_source_change_tracking_setup(config)
-        write_to_file(change_tracking_sql, f"{args.output}/{config.source_type}_change_tracking.sql")
-        print(f"{config.source_type.capitalize()} change tracking setup SQL written to {args.output}/{config.source_type}_change_tracking.sql")
-        
+        file_location = "output" if args.output == None else args.output
+        generate_source_sql(config, file_location)
+        print(f"{config.source_type.capitalize()} change tracking setup SQL written to {file_location}/source_setup.sql.  Please review the generated SQL and execute it in your {config.source_type} environment.")
         print(f"\nIMPORTANT: These SQL files need to be executed by a {config.source_type} user with appropriate permissions.")
-        print(f"Please review the generated SQL and execute it in your {config.source_type} environment.")
+
 
 if __name__ == "__main__":
     main()

@@ -175,7 +175,7 @@ Melchi provides a `generate_permissions` feature to help you create the necessar
    python main.py generate_permissions
    ```
 
-3. This will generate a file named `permissions.sql` in the `output` directory. Review this file to ensure it meets your security requirements.
+3. This will generate a file named `source_setup.sql` in the `output` directory. Review this file to ensure it meets your security requirements.
 
 4. Execute the SQL statements in the generated file in your Snowflake account to set up the permissions.
 

@@ -2,6 +2,13 @@
 
 from src.utils.table_config import get_tables_to_transfer
 
+def generate_source_sql(config, file_location):
+    if config.source_type == "snowflake":
+        sql = generate_snowflake_source_sql(config)
+        write_sql_to_file(sql, f"{file_location}/source_setup.sql")
+    else:
+        print(f"{config.source_type} is not yet supported as a source")
+
 def generate_snowflake_source_sql(config):
     role = config.source_config['role']
     warehouse = config.source_config['warehouse']
@@ -54,7 +61,6 @@ def generate_snowflake_source_sql(config):
 
     return "\n".join(all_grants)
 
-def write_permissions_to_file(permissions, filename = "output/permissions.sql"):
-    with open(filename, 'w') as f:
+def write_sql_to_file(permissions, file_name):
+    with open(file_name, 'w') as f:
         f.write(permissions)
-    print(f"Permissions written to {filename}")
