@@ -1,4 +1,40 @@
-/old
+
+
+# Ignore .egg-info directories
+*.egg-info/
+
+# Ignore .pyc files
+*.pyc
+
+# Ignore all Python compiled files
+__pycache__/
+**/__pycache__/
+*.py[cod]
+
+# Virtual environment
+venv/
+env/
+.venv/
+
+# Distribution / packaging
+dist/
+build/
+*.egg
+
+# Python Notebook checkpoints
+.ipynb_checkpoints
+
+# pytest cache
+.pytest_cache/
+
+# mypy cache
+.mypy_cache/
+
+# Coverage reports
+htmlcov/
+.coverage
+
 /venv
 .env
 db/*
+output/
