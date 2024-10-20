@@ -38,3 +38,4 @@ htmlcov/
 .env
 db/*
 output/
+tests/output
