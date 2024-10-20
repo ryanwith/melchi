@@ -27,7 +27,7 @@ class TypeMapper:
             return "JSON"
         elif main_type == "VECTOR":
             vector_type = type_data[1].split(",")[0]
-            vector_length = type_data[1].split(",")[1][:-1]
+            vector_length = type_data[1].split(",")[1][:-1].strip()
             return f"{vector_type}[{vector_length}]"
         elif main_type in ("GEOGRAPHY", "GEOMETRY"):
             return "GEOMETRY"

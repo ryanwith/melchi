@@ -1,10 +1,10 @@
 import unittest
 from unittest.mock import patch, mock_open
 from io import StringIO
-from src.source_sql_generator import generate_snowflake_source_sql, write_permissions_to_file
+from src.source_sql_generator import generate_snowflake_source_sql, write_sql_to_file
 from src.config import Config
 
-class TestGeneratePermissions(unittest.TestCase):
+class TestSourceSQLGenerator(unittest.TestCase):
 
     def setUp(self):
         self.mock_config = Config.from_dict({
@@ -60,12 +60,12 @@ GRANT SELECT ON TABLE DB2.SCHEMA2.TABLE2 TO ROLE TEST_ROLE;
         self.assertEqual(permissions.strip(), expected_permissions.strip())
 
 
-    def test_write_permissions_to_file(self):
+    def test_write_sql_to_file(self):
         test_permissions = "TEST PERMISSION 1;\nTEST PERMISSION 2;"
         mock_file = mock_open()
 
         with patch('builtins.open', mock_file):
-            write_permissions_to_file(test_permissions, "test_output.sql")
+            write_sql_to_file(test_permissions, "test_output.sql")
 
         mock_file.assert_called_once_with("test_output.sql", "w")
         handle = mock_file()
