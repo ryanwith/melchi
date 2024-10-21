@@ -80,25 +80,25 @@ class AbstractWarehouse(ABC):
     def create_cdc_stream(self, table_info):
         pass
 
-    @abstractmethod
-    def sync_table(self, table_info, df):
-        pass
-
+    # input: name of the permanent table you're copying
+    # output: the stream name for that permanent table
     @abstractmethod
     def get_stream_name(self, table_info):
         pass
 
     @abstractmethod
-    def cleanup_cdc_for_table(self, table_info):
+    def sync_table(self, table_info, df):
+        pass
+
+    # input: table_info object
+    # output: finishes up any actions needed to complete CDC in the source
+    @abstractmethod
+    def cleanup_source(self, table_info):
         pass
 
     @abstractmethod
     def execute_query(self, query_text):
         pass
-
-    @abstractmethod
-    def fetch_results(self, num):
-        pass    
 
     @abstractmethod
     def get_change_tracking_schema(self):

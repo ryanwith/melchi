@@ -121,7 +121,8 @@ class SnowflakeWarehouse(AbstractWarehouse):
         changes.rename(columns={"METADATA$ROW_ID": "MELCHI_ROW_ID", "METADATA$ACTION": "MELCHI_METADATA_ACTION"}, inplace=True)
         return changes
 
-    def cleanup_cdc_for_table(self, table_info):
+
+    def cleanup_source(self, table_info):
         stream_processing_table_name = self.get_stream_processing_table_name(table_info)
         self.cursor.execute(f"TRUNCATE TABLE {stream_processing_table_name}")
 
@@ -144,17 +145,6 @@ class SnowflakeWarehouse(AbstractWarehouse):
         self.cursor.execute(query_text)
         if return_results:
             return self.cursor.fetchall()
-
-    def fetch_results(self, num = None):
-        if num is None:
-            results = self.cursor.fetchall()
-        elif num == 1:
-            results = self.cursor.fetchone()
-        elif num > 1:
-            results = self.cursor.fetchall()
-        else:
-            raise ValueError(f"Invalid value for 'num': {num}. Expected None or a positive integer.")
-        return results   
     
     def sync_table(self, table_info, df):
         pass

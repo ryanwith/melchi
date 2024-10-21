@@ -181,14 +181,10 @@ class DuckDBWarehouse(AbstractWarehouse):
             SELECT primary_keys FROM {captured_tables}
                 WHERE table_name = '{table_info["table"]}' and schema_name = '{table_info["schema"]}'
         """
-        # get_primary_keys_query = f"""
-        #     SELECT primary_keys FROM {captured_tables}
-        #         WHERE table_name = '{table_info["table"]}' and schema_name = '{table_info["schema"]}'
-        # """
         primary_keys = self.connection.execute(get_primary_keys_query).fetchone()[0]
         return primary_keys
     
-    def cleanup_cdc_for_table(self, table_info):
+    def cleanup_source(self, table_info):
         pass
     
     def update_cdc_tracker(self, table_info):
@@ -220,9 +216,9 @@ class DuckDBWarehouse(AbstractWarehouse):
         return {
             "name": row[1],
             "type": row[2],
-            "nullable": True if row[3] == "TRUE" else False,
+            "nullable": True if row[3] == "TRUE".upper() else False,
             "default_value": row[4],
-            "primary_key": True if row[5] == "TRUE" else False,
+            "primary_key": True if row[5] == "TRUE".upper() else False,
         }
     
     def generate_create_table_statement(self, table_info, schema):
