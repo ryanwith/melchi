@@ -59,12 +59,6 @@ class AbstractWarehouse(ABC):
         pass
 
     # input: table you want to get data from
-    # output: returns alls records in the specified table
-    @abstractmethod
-    def get_data(self, table_name):
-        pass
-
-    # input: table you want to get data from
     # output: all records in that table as a data frame
     @abstractmethod
     def get_data_as_df(self, table_name):
