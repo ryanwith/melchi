@@ -36,15 +36,3 @@ def sync_data(config):
         source_warehouse.disconnect()
         target_warehouse.disconnect()
 
-def transfer_data(snowflake_cursor, duckdb_conn, table_name, batch_size=10000):
-    snowflake_cursor.execute(f"SELECT * FROM {table_name}")
-    
-    while True:
-        batch = snowflake_cursor.fetchmany(batch_size)
-        if not batch:
-            break
-        
-        df = pd.DataFrame(batch, columns=[desc[0] for desc in snowflake_cursor.description])
-        
-        # Use DuckDB's from_df function to insert data from the DataFrame
-        duckdb_conn.execute(f"INSERT INTO {table_name} SELECT * FROM duckdb.from_df($df)", {'df': df})
