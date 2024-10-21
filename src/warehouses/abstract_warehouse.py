@@ -29,6 +29,11 @@ class AbstractWarehouse(ABC):
     def rollback_transaction(self):
         pass
 
+    # out: gets the full name of change_tracking_schema that the Melchi tables are created in for a specific database
+    @abstractmethod
+    def get_change_tracking_schema_full_name(self):
+        pass
+
     # input: table_info dict including the following strings:
         # table 
         # schema
@@ -46,6 +51,7 @@ class AbstractWarehouse(ABC):
     # input: table_info dict, source_schema, target_schema
     # output:
         # creates a table with the target_schema in the target_warehouse
+            # adds a melchi_id column if there are no primary keys specified in teh table
         # updates the table table_info in the target warehouse with metadata
         # updates the table source_columns in the target warehouse with the table's schema int he source warehouse
     @abstractmethod
@@ -96,14 +102,15 @@ class AbstractWarehouse(ABC):
     def cleanup_source(self, table_info):
         pass
 
+    # input: query to execute
+    # output: executes the submitted query, optionally returns results
+    # currently just used for testing
     @abstractmethod
-    def execute_query(self, query_text):
+    def execute_query(self, query_text, return_results = False):
         pass
 
-    @abstractmethod
-    def get_change_tracking_schema(self):
-        pass
-
+    # input: table_info object, the warehouse type it needs to be replicated to
+    # output: a schema object (see get schema) with the required types for the new database
     def map_schema_to(self, table_info, target_warehouse_type):
         method_name = f"{self.warehouse_type}_to_{target_warehouse_type}"
         mapping_method = getattr(TypeMapper, method_name, None)
@@ -115,17 +122,6 @@ class AbstractWarehouse(ABC):
         else:
             raise NotImplementedError(f"Type mapping from {self.warehouse_type} to {target_warehouse_type} is not implemented")               
 
-    def map_type_to(self, target_warehouse_type, source_type):
-        method_name = f"{self.warehouse_type}_to_{target_warehouse_type}"
-        mapping_method = getattr(TypeMapper, method_name, None)
-        if mapping_method:
-            return mapping_method(source_type)
-        else:
-            raise NotImplementedError(f"Type mapping from {self.warehouse_type} to {target_warehouse_type} is not implemented")
-
-    @abstractmethod
-    def insert_df(self, table_info, df):
-        pass
     
     @abstractmethod
     def replace_existing_tables(self):

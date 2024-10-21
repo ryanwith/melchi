@@ -10,6 +10,7 @@ class DuckDBWarehouse(AbstractWarehouse):
         self.config = config
         self.connection = None
 
+    # creates a connection to a duckdb database allowing you to query it
     def connect(self):
         self.connection = duckdb.connect(self.config['database'])
 
@@ -26,9 +27,10 @@ class DuckDBWarehouse(AbstractWarehouse):
     def rollback_transaction(self):
         self.connection.rollback()
 
-    def get_change_tracking_schema(self):
+    def get_change_tracking_schema_full_name(self):
         return self.config["change_tracking_schema"]
 
+    # see abstract warehouse
     def get_schema(self, table_info):
         result = self.connection.execute(f"PRAGMA table_info('{self.get_full_table_name(table_info)}')")
         rows = []
@@ -36,9 +38,16 @@ class DuckDBWarehouse(AbstractWarehouse):
             rows.append(self.format_schema_row(row))
         return rows
 
+    # input: table_info dict, source_schema, target_schema
+        # output:
+        # creates a table with the target_schema in the target_warehouse
+            # adds a melchi_id column if there are no primary keys specified in teh table
+
+        # updates the table table_info in the target warehouse with metadata
+        # updates the table source_columns in the target warehouse with the table's schema int he source warehouse
     def create_table(self, table_info, source_schema, target_schema):
         primary_keys = []
-        # create a schema if needed
+        # create the schema in duckdb if needed
         self.connection.execute(f"CREATE SCHEMA IF NOT EXISTS {table_info["schema"]}")
         # build a list of primary keys
         for column in target_schema:
@@ -79,21 +88,17 @@ class DuckDBWarehouse(AbstractWarehouse):
 
         update_logs = [
             f"""
-            INSERT INTO {self.get_change_tracking_schema()}.captured_tables VALUES (
+            INSERT INTO {self.get_change_tracking_schema_full_name()}.captured_tables VALUES (
                 '{table_info["schema"]}', '{table_info["table"]}', '{current_timestamp}', '{current_timestamp}', {self.convert_list_to_duckdb_syntax(primary_keys)}
             );"""
             ,
             f"""
-            INSERT INTO {self.get_change_tracking_schema()}.source_columns VALUES
+            INSERT INTO {self.get_change_tracking_schema_full_name()}.source_columns VALUES
             {(",\n").join(source_columns)};
             """
             ]
 
         self.connection.execute("\n".join(update_logs))
-
-    def get_data(self, table_name):
-        result = self.connection.execute(f"SELECT * FROM {table_name};")
-        return result.fetchall()
 
     def get_data_as_df(self, table_name):
         pass
@@ -119,17 +124,17 @@ class DuckDBWarehouse(AbstractWarehouse):
                 # the schema of the object in the source
                 # can be important for understanding how to query it
     def setup_target_environment(self):
-        self.connection.execute(f"CREATE SCHEMA IF NOT EXISTS {self.get_change_tracking_schema()};")
+        self.connection.execute(f"CREATE SCHEMA IF NOT EXISTS {self.get_change_tracking_schema_full_name()};")
         if self.replace_existing_tables() == True:
             beginning_of_query = "CREATE OR REPLACE TABLE"
         else:
             beginning_of_query = "CREATE TABLE IF NOT EXISTS"
         self.connection.execute(f"""
-            {beginning_of_query} {self.get_change_tracking_schema()}.captured_tables
+            {beginning_of_query} {self.get_change_tracking_schema_full_name()}.captured_tables
                 (schema_name varchar, table_name varchar, created_at timestamp, updated_at timestamp, primary_keys varchar[]);
         """)
         self.connection.execute(f"""
-            {beginning_of_query} {self.get_change_tracking_schema()}.source_columns (
+            {beginning_of_query} {self.get_change_tracking_schema_full_name()}.source_columns (
             table_catalog varchar, table_schema varchar, table_name varchar, column_name varchar, data_type varchar, column_default varchar, is_nullable boolean, primary_key boolean
             );
         """)
@@ -176,7 +181,7 @@ class DuckDBWarehouse(AbstractWarehouse):
         return f"[{", ".join(list(map(lambda item: f"'{item}'", standard_list)))}]"
     
     def get_primary_keys(self, table_info):
-        captured_tables = f"{self.get_change_tracking_schema()}.captured_tables"
+        captured_tables = f"{self.get_change_tracking_schema_full_name()}.captured_tables"
         get_primary_keys_query = f"""
             SELECT primary_keys FROM {captured_tables}
                 WHERE table_name = '{table_info["table"]}' and schema_name = '{table_info["schema"]}'
@@ -189,22 +194,11 @@ class DuckDBWarehouse(AbstractWarehouse):
     
     def update_cdc_tracker(self, table_info):
         where_clause = f"WHERE table_name = '{table_info["table"]}' and schema_name = '{table_info["schema"]}'"
-        self.connection.execute(f"UPDATE {self.get_change_tracking_schema()}.captured_tables SET updated_at = current_timestamp {where_clause} ")
+        self.connection.execute(f"UPDATE {self.get_change_tracking_schema_full_name()}.captured_tables SET updated_at = current_timestamp {where_clause} ")
 
-    def execute_query(self, query_text):
+    def execute_query(self, query_text, return_results = False):
         self.connection.execute(query_text)
 
-    def fetch_results(self, num = None):
-        if num is None:
-            results = self.connection.fetchall()
-        elif num == 1:
-            results = self.connection.fetchone()
-        elif num > 1:
-            results = self.connection.fetchall()
-        else:
-            raise ValueError(f"Invalid value for 'num': {num}. Expected None or a positive integer.")
-        return results   
-    
     def replace_existing_tables(self):
         replace_existing = self.config.get("replace_existing", False)
         if replace_existing == True:
@@ -244,6 +238,3 @@ class DuckDBWarehouse(AbstractWarehouse):
             if column["type"] == "GEOMETRY":
                 return True
         return False
-
-    def insert_df(self, table_info, df):
-        pass

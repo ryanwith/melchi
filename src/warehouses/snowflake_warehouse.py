@@ -35,7 +35,7 @@ class SnowflakeWarehouse(AbstractWarehouse):
     def rollback_transaction(self):
         self.connection.rollback()
 
-    def get_change_tracking_schema(self):
+    def get_change_tracking_schema_full_name(self):
         return f"{self.config["change_tracking_database"]}.{self.config["change_tracking_schema"]}"
 
     def get_schema(self, table_info):
@@ -49,10 +49,6 @@ class SnowflakeWarehouse(AbstractWarehouse):
         # Implementation for creating a table in Snowflake
         pass
 
-    def get_data(self, table_name):
-        self.cursor.execute(f"SELECT * FROM {table_name}")
-        return self.cursor.fetchall()
-    
     def get_data_as_df(self, table_name):
         results = self.get_data(table_name)
         return pd.DataFrame(results, columns=[desc[0] for desc in self.cursor.description])
@@ -133,13 +129,13 @@ class SnowflakeWarehouse(AbstractWarehouse):
         database = table_info["database"]
         schema = table_info["schema"]
         table = table_info["table"]
-        return f"{self.get_change_tracking_schema()}.{database}${schema}${table}"
+        return f"{self.get_change_tracking_schema_full_name()}.{database}${schema}${table}"
     
     def get_stream_processing_table_name(self, table_info):
         database = table_info["database"]
         schema = table_info["schema"]
         table = table_info["table"]
-        return f"{self.get_change_tracking_schema()}.{database}${schema}${table}_processing"
+        return f"{self.get_change_tracking_schema_full_name()}.{database}${schema}${table}_processing"
     
     def execute_query(self, query_text, return_results = False):
         self.cursor.execute(query_text)
@@ -147,7 +143,7 @@ class SnowflakeWarehouse(AbstractWarehouse):
             return self.cursor.fetchall()
     
     def sync_table(self, table_info, df):
-        pass
+        raise NotImplementedError("Snowflake is not yet supported as a target")
 
     def convert_cursor_results_to_df(self, results):
         pd.DataFrame(results, columns=[desc[0] for desc in self.cursor.description])
@@ -167,33 +163,3 @@ class SnowflakeWarehouse(AbstractWarehouse):
             "default_value": row[4],
             "primary_key": True if row[5] == "Y" else False
         }
-
-    def insert_df(self, table_info, df):
-        print("INSERTING STARTED")
-        table_name = self.get_full_table_name(table_info)
-        # Ensure we have an active connection
-        if not self.connection or not self.cursor:
-            self.connect()
-        
-        try:
-            # Convert DataFrame to list of tuples
-            data = [tuple(x) for x in df.to_numpy()]
-            
-            # Generate the SQL INSERT statement
-            columns = ', '.join(df.columns)
-            placeholders = ', '.join(['%s'] * len(df.columns))
-            sql = f"INSERT INTO {table_name} ({columns}) VALUES ({placeholders})"
-            
-            # Execute the insert
-            self.cursor.executemany(sql, data)
-            
-            # Commit the transaction
-            self.connection.commit()
-            
-            print(f"Successfully inserted {len(data)} rows into {table_name}")
-            return True, len(data)
-        
-        except Exception as e:
-            print(f"Error inserting data into {table_name}: {str(e)}")
-            self.connection.rollback()
-            return False, 0
