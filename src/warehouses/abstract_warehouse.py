@@ -58,12 +58,6 @@ class AbstractWarehouse(ABC):
     def create_table(self, table_info, source_schema, target_schema):
         pass
 
-    # input: table you want to get data from
-    # output: all records in that table as a data frame
-    @abstractmethod
-    def get_data_as_df(self, table_name):
-        pass
-
     # sets up a warehouse environment as a source or target based on the config
     @abstractmethod
     def setup_environment(self, tables_to_transfer = None):

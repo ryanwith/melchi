@@ -100,9 +100,6 @@ class DuckDBWarehouse(AbstractWarehouse):
 
         self.connection.execute("\n".join(update_logs))
 
-    def get_data_as_df(self, table_name):
-        pass
-
     def setup_environment(self):
         if self.config["warehouse_role"] == "TARGET":
             self.setup_target_environment()
