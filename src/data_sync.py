@@ -24,7 +24,7 @@ def sync_data(config):
 
                     # if there are any issues with commiting into the target database this won't be executed
                     # the CDC data will still exist in the source warehouse and will be able to be grabbed the next time sync_data is run
-                    source_warehouse.cleanup_cdc_for_table(table_info)
+                    source_warehouse.cleanup_source(table_info)
 
                 except Exception as e:
                     source_warehouse.rollback_transaction()

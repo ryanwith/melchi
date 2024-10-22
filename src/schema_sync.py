@@ -28,11 +28,3 @@ def transfer_schema(config, tables=None):
     finally:
         source_warehouse.disconnect()
         target_warehouse.disconnect()
-
-# # generates a target schema based on the source schema
-# def generate_target_schema(source_warehouse, source_schema, target_type):
-#     target_schema = [
-#         (col_name, source_warehouse.map_type_to(target_type, col_type), primary_key)
-#         for col_name, col_type, nullable, default_value, primary_key in source_schema
-#     ]
-#     return target_schema
