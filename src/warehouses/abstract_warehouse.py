@@ -4,6 +4,8 @@ from abc import ABC, abstractmethod
 from .type_mappings import TypeMapper
 
 class AbstractWarehouse(ABC):
+
+    # CONNECTION METHODS
     def __init__(self, warehouse_type):
         self.warehouse_type = warehouse_type
 
@@ -17,6 +19,7 @@ class AbstractWarehouse(ABC):
     def disconnect(self):
         pass
 
+    # TRANSACTION MANAGEMENT
     @abstractmethod
     def begin_transaction(self):
         pass
@@ -29,10 +32,7 @@ class AbstractWarehouse(ABC):
     def rollback_transaction(self):
         pass
 
-    # out: gets the full name of change_tracking_schema that the Melchi tables are created in for a specific database
-    @abstractmethod
-    def get_change_tracking_schema_full_name(self):
-        pass
+    # SCHEMA AND TABLE MANAGEMENT
 
     # input: table_info dict including the following strings:
         # table 
@@ -58,28 +58,40 @@ class AbstractWarehouse(ABC):
     def create_table(self, table_info, source_schema, target_schema):
         pass
 
+    # gets a table name in a way that can be queried
+    @abstractmethod
+    def get_full_table_name(self, table_info):
+        pass    
+
+    @abstractmethod
+    def replace_existing_tables(self):
+        pass
+
+
+
+
+    # CHANGE TRACKING MANAGEMENT
+
+    # out: gets the full name of change_tracking_schema that the Melchi tables are created in for a specific database
+    @abstractmethod
+    def get_change_tracking_schema_full_name(self):
+        pass
+
     # sets up a warehouse environment as a source or target based on the config
     @abstractmethod
     def setup_environment(self, tables_to_transfer = None):
         pass
 
-    # gets a table name in a way that can be queried
-    @abstractmethod
-    def get_full_table_name(self, table_info):
-        pass
 
-    # input: table_info dictionary
-    # output: creates CDC streams used to get changes.  can be multiple tables
-    @abstractmethod
-    def create_cdc_stream(self, table_info):
-        pass
 
-    # input: name of the permanent table you're copying
-    # output: the stream name for that permanent table
-    @abstractmethod
-    def get_stream_name(self, table_info):
-        pass
 
+
+    # DATA MOVEMENT
+
+    # input: table_info object
+    # dataframe containing records that need to be changed including:
+        # melchi_row_id
+        # melchi metadata action of insert or delete
     @abstractmethod
     def sync_table(self, table_info, df):
         pass
@@ -89,6 +101,10 @@ class AbstractWarehouse(ABC):
     @abstractmethod
     def cleanup_source(self, table_info):
         pass
+
+
+
+    # UTILITY METHODS
 
     # input: query to execute
     # output: executes the submitted query, optionally returns results
@@ -111,6 +127,3 @@ class AbstractWarehouse(ABC):
             raise NotImplementedError(f"Type mapping from {self.warehouse_type} to {target_warehouse_type} is not implemented")               
 
     
-    @abstractmethod
-    def replace_existing_tables(self):
-        pass

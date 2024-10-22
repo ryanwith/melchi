@@ -108,9 +108,6 @@ class DuckDBWarehouse(AbstractWarehouse):
         else:
             raise ValueError(f"Unknown warehouse role: {self.config["warehoues_role"]}")
 
-    def get_full_table_name(self, table_info):
-        return f"{table_info["schema"]}.{table_info["table"]}"
-
     # output:
         # creates metadata tables for cdc
             # captured_tables
@@ -136,13 +133,13 @@ class DuckDBWarehouse(AbstractWarehouse):
             );
         """)
 
-    def create_cdc_stream(self, table_info):
-        pass
+    def get_full_table_name(self, table_info):
+        return f"{table_info["schema"]}.{table_info["table"]}"
 
-
-    def get_stream_name(self, table_info):
-        pass
-
+    # input: table_info object
+    # dataframe containing records that need to be changed including:
+        # melchi_row_id
+        # melchi metadata action of insert or delete
     def sync_table(self, table_info, df):
         full_table_name = self.get_full_table_name(table_info)
         temp_table_name = table_info["table"] + "_melchi_cdc"
@@ -166,7 +163,7 @@ class DuckDBWarehouse(AbstractWarehouse):
             SELECT {formatted_columns} FROM {temp_table_name}
             WHERE melchi_metadata_action = 'INSERT'
         """
-        
+        # deletes executed first because if you inserted updated records and then deleted them you wouldn't have your data
         self.connection.execute(delete_sql_statement)
         self.connection.execute(insert_sql_statement)
         self.update_cdc_tracker(table_info)
@@ -174,9 +171,12 @@ class DuckDBWarehouse(AbstractWarehouse):
 
         self.connection.execute(f"DROP TABLE {temp_table_name}")            
 
-    def convert_list_to_duckdb_syntax(self, standard_list):
-        return f"[{", ".join(list(map(lambda item: f"'{item}'", standard_list)))}]"
+    # input: puython list
+    # output: list formatted in the way needed for duckdb
+    def convert_list_to_duckdb_syntax(self, python_list):
+        return f"[{", ".join(list(map(lambda item: f"'{item}'", python_list)))}]"
     
+    # gets the primary keys for a specific table
     def get_primary_keys(self, table_info):
         captured_tables = f"{self.get_change_tracking_schema_full_name()}.captured_tables"
         get_primary_keys_query = f"""
@@ -189,10 +189,12 @@ class DuckDBWarehouse(AbstractWarehouse):
     def cleanup_source(self, table_info):
         pass
     
+    # updates the captured_tables table with the time the last cdc operation ran
     def update_cdc_tracker(self, table_info):
         where_clause = f"WHERE table_name = '{table_info["table"]}' and schema_name = '{table_info["schema"]}'"
         self.connection.execute(f"UPDATE {self.get_change_tracking_schema_full_name()}.captured_tables SET updated_at = current_timestamp {where_clause} ")
 
+    # excutes a query, mainly used for testing
     def execute_query(self, query_text, return_results = False):
         self.connection.execute(query_text)
 
@@ -202,7 +204,8 @@ class DuckDBWarehouse(AbstractWarehouse):
             return True
         else:
             return False
-        
+    
+    # formats a columnf or a schema
     def format_schema_row(self, row):
         return {
             "name": row[1],

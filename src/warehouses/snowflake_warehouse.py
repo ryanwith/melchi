@@ -7,6 +7,11 @@ from ..utils.table_config import get_tables_to_transfer
 
 
 class SnowflakeWarehouse(AbstractWarehouse):
+    """
+    Snowflake warehouse implementation that handles data extraction and CDC operations.
+    Manages connections, schema operations, and change tracking for Snowflake databases.
+    """
+
     def __init__(self, config):
         super().__init__("snowflake")  # Initialize with the warehouse type
         self.config = config
@@ -14,11 +19,9 @@ class SnowflakeWarehouse(AbstractWarehouse):
         self.cursor = None
 
     # CONNECTION METHODS
-
-    # output:
-        # creates a cursor
-        # sets the role and warehouse for operations
+    
     def connect(self):
+        """Creates a cursor and sets the role and warehouse for operations."""
         connect_params = {
             'account': self.config['account'],
             'user': self.config['user'],
@@ -38,7 +41,7 @@ class SnowflakeWarehouse(AbstractWarehouse):
             self.connection = None
 
     # TRANSACTION MANAGEMENT
-
+    
     def begin_transaction(self):
         self.cursor.execute("BEGIN;")
 
@@ -49,9 +52,10 @@ class SnowflakeWarehouse(AbstractWarehouse):
         self.connection.rollback()
 
     # SCHEMA AND TABLE MANAGEMENT
-
+    
     def get_schema(self, table_info):
-
+        # input: table_info dictionary containing keys database, schema, and table
+        # output: array of schema dictionaries as provided in format_schema_row 
         if self.connection == None:
             raise ConnectionError("You have not established a connection to the database")
         elif self.cursor == None:
@@ -81,6 +85,7 @@ class SnowflakeWarehouse(AbstractWarehouse):
             return False
 
     def format_schema_row(self, row):
+        # input: row of the schema as provided in a cursor
         return {
             "name": row[0],
             "type": row[1],
@@ -90,7 +95,7 @@ class SnowflakeWarehouse(AbstractWarehouse):
         }
 
     # CHANGE TRACKING MANAGEMENT
-
+    
     def get_change_tracking_schema_full_name(self):
         return f"{self.config["change_tracking_database"]}.{self.config["change_tracking_schema"]}"
     
@@ -102,10 +107,9 @@ class SnowflakeWarehouse(AbstractWarehouse):
         else:
             raise ValueError(f"Unknown warehouse role: {self.config["warehoues_role"]}")
 
-    # input:array of table_info objects to transfer
-    # output: stream and permanent cdc table created per table
     def setup_source_environment(self, tables_to_transfer):
-        if tables_to_transfer == None:
+        """Creates streams and CDC tables for each table to be transferred."""
+        if tables_to_transfer == []:
             raise Exception("No tables to transfer found")
 
         if self.config["cdc_strategy"] == "cdc_streams":
@@ -117,12 +121,11 @@ class SnowflakeWarehouse(AbstractWarehouse):
     def setup_target_environment(self):
         pass
 
-    # input: table_info dictionary
-    # output:
-        # creates a snowflake stream to capturing raw CDC tables
-        # creates a permanent table the ingest stream updates into
-    # note: autogenerate names that should be unique
     def create_cdc_objects(self, table_info):
+        """
+        Creates a snowflake stream and permanent table for CDC tracking.
+        Generates unique names for stream and processing table.
+        """
         stream_name = self.get_stream_name(table_info)
         table_name = f"{table_info["database"]}.{table_info["schema"]}.{table_info["table"]}"
         stream_processing_table = f"{stream_name}_processing"
@@ -142,11 +145,35 @@ class SnowflakeWarehouse(AbstractWarehouse):
         for query in create_stream_processing_table_queries:
             self.cursor.execute(query)
 
-    # input: table info dictionary
-    # output:
-        # ingests any CDC data in stream table into permanent cdc table advancing the offset
-        # returns these changes
+    def get_stream_name(self, table_info):
+        """Returns the stream name for the given table."""
+        database = table_info["database"]
+        schema = table_info["schema"]
+        table = table_info["table"]
+        return f"{self.get_change_tracking_schema_full_name()}.{database}${schema}${table}"
+    
+    def get_stream_processing_table_name(self, table_info):
+        """Returns the processing table name for the given table's stream."""
+        database = table_info["database"]
+        schema = table_info["schema"]
+        table = table_info["table"]
+        return f"{self.get_change_tracking_schema_full_name()}.{database}${schema}${table}_processing"
+
+    # DATA SYNCHRONIZATION
+    
+    def sync_table(self, table_info, df):
+        raise NotImplementedError("Snowflake is not yet supported as a target")
+
+    def cleanup_source(self, table_info):
+        """Removes processed records from the stream processing table."""
+        stream_processing_table_name = self.get_stream_processing_table_name(table_info)
+        self.cursor.execute(f"TRUNCATE TABLE {stream_processing_table_name}")    
+
     def get_cdc_data(self, table_info):
+        """
+        Retrieves CDC data from stream table and returns changes.
+        Advances the stream offset and returns changes as a DataFrame.
+        """
         stream_processing_table_name = self.get_stream_processing_table_name(table_info)
         stream_name = self.get_stream_name(table_info)
         self.cursor.execute(f"INSERT INTO {stream_processing_table_name} SELECT * FROM {stream_name};")
@@ -154,42 +181,15 @@ class SnowflakeWarehouse(AbstractWarehouse):
         changes.rename(columns={"METADATA$ROW_ID": "MELCHI_ROW_ID", "METADATA$ACTION": "MELCHI_METADATA_ACTION"}, inplace=True)
         return changes
 
-    # input: name of the permanent table you're copying
-    # output: the stream name for that permanent table
-    def get_stream_name(self, table_info):
-        database = table_info["database"]
-        schema = table_info["schema"]
-        table = table_info["table"]
-        return f"{self.get_change_tracking_schema_full_name()}.{database}${schema}${table}"
-    
-    # input: table_info object
-    # output: anem of table base don that
-    def get_stream_processing_table_name(self, table_info):
-        database = table_info["database"]
-        schema = table_info["schema"]
-        table = table_info["table"]
-        return f"{self.get_change_tracking_schema_full_name()}.{database}${schema}${table}_processing"
-
-    # DATA MOVEMENT
-
-    def sync_table(self, table_info, df):
-        raise NotImplementedError("Snowflake is not yet supported as a target")
-
-    # removes records ingested into target from the stream processing table
-    def cleanup_source(self, table_info):
-        stream_processing_table_name = self.get_stream_processing_table_name(table_info)
-        self.cursor.execute(f"TRUNCATE TABLE {stream_processing_table_name}")    
-
-
-    def get_data_as_df(self, query_text):
-        results = self.execute_query(query_text, True)
-        return pd.DataFrame(results, columns=[desc[0] for desc in self.cursor.description])
-
     # UTILITY METHODS
-     
-    # input: query text
-    # output: executes query, returns results if asked for
+    
     def execute_query(self, query_text, return_results = False):
+        """Executes a query and optionally returns results."""
         self.cursor.execute(query_text)
         if return_results:
             return self.cursor.fetchall()
+
+    def get_data_as_df(self, query_text):
+        """Executes a query and returns results as a pandas DataFrame."""
+        results = self.execute_query(query_text, True)
+        return pd.DataFrame(results, columns=[desc[0] for desc in self.cursor.description])
