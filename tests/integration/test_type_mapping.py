@@ -18,7 +18,6 @@ from tests.data_generators.snowflake.snowflake_data_generator import (
     generate_update_query
 )
 from tests.config.config import get_test_tables
-from src.source_sql_generator import generate_snowflake_source_permissions, write_permissions_to_file
 
 @pytest.fixture
 def test_config():

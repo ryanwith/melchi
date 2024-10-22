@@ -5,18 +5,28 @@ import datetime
 from .abstract_warehouse import AbstractWarehouse
 
 class DuckDBWarehouse(AbstractWarehouse):
+    """
+    DuckDB warehouse implementation that handles data ingestion and CDC operations.
+    Manages connections, schema operations, and change tracking for DuckDB databases.
+    """
+
     def __init__(self, config):
         super().__init__("duckdb")  # Initialize with the warehouse type
         self.config = config
         self.connection = None
 
-    # creates a connection to a duckdb database allowing you to query it
+    # CONNECTION METHODS
+
     def connect(self):
+        """Creates a connection to a DuckDB database allowing you to query it."""
         self.connection = duckdb.connect(self.config['database'])
 
     def disconnect(self):
         if self.connection:
             self.connection.close()
+            self.connection = None
+
+    # TRANSACTION MANAGEMENT
 
     def begin_transaction(self):
         self.connection.begin()
@@ -27,25 +37,21 @@ class DuckDBWarehouse(AbstractWarehouse):
     def rollback_transaction(self):
         self.connection.rollback()
 
-    def get_change_tracking_schema_full_name(self):
-        return self.config["change_tracking_schema"]
+    # SCHEMA AND TABLE MANAGEMENT
 
-    # see abstract warehouse
     def get_schema(self, table_info):
+        """Returns array of schema dictionaries as provided in format_schema_row."""
         result = self.connection.execute(f"PRAGMA table_info('{self.get_full_table_name(table_info)}')")
         rows = []
         for row in result.fetchall():
             rows.append(self.format_schema_row(row))
         return rows
 
-    # input: table_info dict, source_schema, target_schema
-        # output:
-        # creates a table with the target_schema in the target_warehouse
-            # adds a melchi_id column if there are no primary keys specified in teh table
-
-        # updates the table table_info in the target warehouse with metadata
-        # updates the table source_columns in the target warehouse with the table's schema int he source warehouse
     def create_table(self, table_info, source_schema, target_schema):
+        """
+        Creates table with target_schema and adds melchi_id if no primary keys.
+        Updates metadata tables with table info and source columns.
+        """
         primary_keys = []
         # create the schema in duckdb if needed
         self.connection.execute(f"CREATE SCHEMA IF NOT EXISTS {table_info["schema"]}")
@@ -100,7 +106,62 @@ class DuckDBWarehouse(AbstractWarehouse):
 
         self.connection.execute("\n".join(update_logs))
 
+    def get_full_table_name(self, table_info):
+        """Returns fully qualified table name."""
+        return f"{table_info["schema"]}.{table_info["table"]}"
+
+    def replace_existing_tables(self):
+        """Returns whether existing tables should be replaced."""
+        replace_existing = self.config.get("replace_existing", False)
+        if replace_existing == True:
+            return True
+        else:
+            return False
+
+    def format_schema_row(self, row):
+        """Formats a column for a schema."""
+        return {
+            "name": row[1],
+            "type": row[2],
+            "nullable": True if row[3] == "TRUE".upper() else False,
+            "default_value": row[4],
+            "primary_key": True if row[5] == "TRUE".upper() else False,
+        }
+
+    def generate_create_table_statement(self, table_info, schema):
+        """Generates SQL statement for table creation."""
+        if self.replace_existing_tables() == True:
+            create_statement = f"CREATE OR REPLACE TABLE {self.get_full_table_name(table_info)} "
+        else:
+            create_statement = f"CREATE TABLE IF NOT EXISTS {self.get_full_table_name(table_info)} "
+        column_statements = []
+        for col in schema:
+            column_statement = f"{col["name"]} {col["type"]}"
+            column_statement += " NOT NULL" if col["nullable"] == False else ""
+            column_statement += f" DEFAULT {col["default_value"]}" if col["default_value"] is not None else ""
+            column_statements.append(column_statement)
+        full_create_statement = f"{create_statement}({", ".join(column_statements)});"
+
+        # # installs and loads spatial extension if that's required for the table
+        # if self.contains_spatial(schema):
+        #     return f"INSTALL spatial;\nLOAD spatial;\n{full_create_statement}"
+        return full_create_statement
+
+    def contains_spatial(self, schema):
+        """Checks if schema contains spatial data types."""
+        for column in schema:
+            if column["type"] == "GEOMETRY":
+                return True
+        return False
+
+    # CHANGE TRACKING MANAGEMENT
+
+    def get_change_tracking_schema_full_name(self):
+        """Returns the change tracking schema name."""
+        return self.config["change_tracking_schema"]
+
     def setup_environment(self):
+        """Sets up environment based on warehouse role."""
         if self.config["warehouse_role"] == "TARGET":
             self.setup_target_environment()
         elif self.config["warehouse_role"] == "SOURCE":
@@ -108,39 +169,25 @@ class DuckDBWarehouse(AbstractWarehouse):
         else:
             raise ValueError(f"Unknown warehouse role: {self.config["warehoues_role"]}")
 
-    # output:
-        # creates metadata tables for cdc
-            # captured_tables
-                # which tables are being replicated 
-                # when they're inserted into
-                # what we're considering primary keys for CDC purposes
-            # source_schema
-                # the schema of the object in the source
-                # can be important for understanding how to query it
     def setup_target_environment(self):
+        """Creates metadata tables for CDC tracking and source schema information."""
         self.connection.execute(f"CREATE SCHEMA IF NOT EXISTS {self.get_change_tracking_schema_full_name()};")
         if self.replace_existing_tables() == True:
             beginning_of_query = "CREATE OR REPLACE TABLE"
         else:
             beginning_of_query = "CREATE TABLE IF NOT EXISTS"
-        self.connection.execute(f"""
-            {beginning_of_query} {self.get_change_tracking_schema_full_name()}.captured_tables
-                (schema_name varchar, table_name varchar, created_at timestamp, updated_at timestamp, primary_keys varchar[]);
-        """)
-        self.connection.execute(f"""
-            {beginning_of_query} {self.get_change_tracking_schema_full_name()}.source_columns (
-            table_catalog varchar, table_schema varchar, table_name varchar, column_name varchar, data_type varchar, column_default varchar, is_nullable boolean, primary_key boolean
-            );
-        """)
+        self.connection.execute(f"""{beginning_of_query} {self.get_change_tracking_schema_full_name()}"""
+                                + """.captured_tables (schema_name varchar, table_name varchar, created_at timestamp, updated_at timestamp, primary_keys varchar[]);""")
+        self.connection.execute(f"""{beginning_of_query} {self.get_change_tracking_schema_full_name()}"""
+                                + """.source_columns (table_catalog varchar, table_schema varchar, table_name varchar, column_name varchar, data_type varchar, column_default varchar, is_nullable boolean, primary_key boolean);""")
 
-    def get_full_table_name(self, table_info):
-        return f"{table_info["schema"]}.{table_info["table"]}"
+    # DATA SYNCHRONIZATION
 
-    # input: table_info object
-    # dataframe containing records that need to be changed including:
-        # melchi_row_id
-        # melchi metadata action of insert or delete
     def sync_table(self, table_info, df):
+        """
+        Syncs changes from DataFrame to target table using metadata action flags.
+        Handles both inserts and deletes.
+        """
         full_table_name = self.get_full_table_name(table_info)
         temp_table_name = table_info["table"] + "_melchi_cdc"
 
@@ -169,72 +216,30 @@ class DuckDBWarehouse(AbstractWarehouse):
         self.update_cdc_tracker(table_info)
         # add update table info query
 
-        self.connection.execute(f"DROP TABLE {temp_table_name}")            
+        self.connection.execute(f"DROP TABLE {temp_table_name}")
 
-    # input: puython list
-    # output: list formatted in the way needed for duckdb
-    def convert_list_to_duckdb_syntax(self, python_list):
-        return f"[{", ".join(list(map(lambda item: f"'{item}'", python_list)))}]"
-    
-    # gets the primary keys for a specific table
-    def get_primary_keys(self, table_info):
-        captured_tables = f"{self.get_change_tracking_schema_full_name()}.captured_tables"
-        get_primary_keys_query = f"""
-            SELECT primary_keys FROM {captured_tables}
-                WHERE table_name = '{table_info["table"]}' and schema_name = '{table_info["schema"]}'
-        """
-        primary_keys = self.connection.execute(get_primary_keys_query).fetchone()[0]
-        return primary_keys
-    
     def cleanup_source(self, table_info):
         pass
-    
-    # updates the captured_tables table with the time the last cdc operation ran
+
     def update_cdc_tracker(self, table_info):
+        """Updates the captured_tables table with the time the last CDC operation ran."""
         where_clause = f"WHERE table_name = '{table_info["table"]}' and schema_name = '{table_info["schema"]}'"
         self.connection.execute(f"UPDATE {self.get_change_tracking_schema_full_name()}.captured_tables SET updated_at = current_timestamp {where_clause} ")
 
-    # excutes a query, mainly used for testing
+    def get_primary_keys(self, table_info):
+        """Gets the primary keys for a specific table."""
+        captured_tables = f"{self.get_change_tracking_schema_full_name()}.captured_tables"
+        get_primary_keys_query = f"""SELECT primary_keys FROM {captured_tables}
+                WHERE table_name = '{table_info["table"]}' and schema_name = '{table_info["schema"]}'"""
+        primary_keys = self.connection.execute(get_primary_keys_query).fetchone()[0]
+        return primary_keys
+
+    # UTILITY METHODS
+
     def execute_query(self, query_text, return_results = False):
+        """Executes a query, mainly used for testing."""
         self.connection.execute(query_text)
 
-    def replace_existing_tables(self):
-        replace_existing = self.config.get("replace_existing", False)
-        if replace_existing == True:
-            return True
-        else:
-            return False
-    
-    # formats a columnf or a schema
-    def format_schema_row(self, row):
-        return {
-            "name": row[1],
-            "type": row[2],
-            "nullable": True if row[3] == "TRUE".upper() else False,
-            "default_value": row[4],
-            "primary_key": True if row[5] == "TRUE".upper() else False,
-        }
-    
-    def generate_create_table_statement(self, table_info, schema):
-        if self.replace_existing_tables() == True:
-            create_statement = f"CREATE OR REPLACE TABLE {self.get_full_table_name(table_info)} "
-        else:
-            create_statement = f"CREATE TABLE IF NOT EXISTS {self.get_full_table_name(table_info)} "
-        column_statements = []
-        for col in schema:
-            column_statement = f"{col["name"]} {col["type"]}"
-            column_statement += " NOT NULL" if col["nullable"] == False else ""
-            column_statement += f" DEFAULT {col["default_value"]}" if col["default_value"] is not None else ""
-            column_statements.append(column_statement)
-        full_create_statement = f"{create_statement}({", ".join(column_statements)});"
-
-        # # installs and loads spatial extension if that's required for the table
-        # if self.contains_spatial(schema):
-        #     return f"INSTALL spatial;\nLOAD spatial;\n{full_create_statement}"
-        return full_create_statement
-    
-    def contains_spatial(self, schema):
-        for column in schema:
-            if column["type"] == "GEOMETRY":
-                return True
-        return False
+    def convert_list_to_duckdb_syntax(self, python_list):
+        """Converts Python list to DuckDB array syntax."""
+        return f"[{", ".join(list(map(lambda item: f"'{item}'", python_list)))}]"

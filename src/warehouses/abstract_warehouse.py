@@ -5,9 +5,10 @@ from .type_mappings import TypeMapper
 
 class AbstractWarehouse(ABC):
 
-    # CONNECTION METHODS
     def __init__(self, warehouse_type):
         self.warehouse_type = warehouse_type
+
+    # CONNECTION METHODS
 
     # creates a connection to a data warehouse and preps it for querying
     # sets session variables and creates cursors as required
