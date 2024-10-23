@@ -3,7 +3,7 @@
 
 ## Overview  📚
 
-Melchi is a data synchronization tool that streamlines the process of replicating data from Snowflake to DuckDB in near real-time. It eliminates the need to build and manage custom ETL pipelines, saving time and resources for data teams.
+Melchi is a Snowflake to DuckDB replication tool that handles both initial data ingestion and continuous updates through CDC (Change Data Capture). It gives you a local, synchronized copy of your Snowflake data without the overhead of managing complex ETL processes.
 
 Here's how Melchi works:
 
