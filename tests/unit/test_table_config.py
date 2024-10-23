@@ -99,13 +99,10 @@ def test_malformed_csv(tmp_path):
     config = Mock()
     
     for i, content in enumerate(test_cases):
-        print("CONTENT")
-        print(content)
         # Create temporary CSV file
         csv_path = tmp_path / f"test_tables_{i}.csv"
         csv_path.write_text(content)
         config.get_tables_config_path.return_value = str(csv_path)
-        print
         with pytest.raises(ValueError):
             get_tables_to_transfer(config)
 
