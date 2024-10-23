@@ -1,4 +1,4 @@
-database,schema,table
-melchi_test_data,test_melchi_schema,no_pk
-melchi_test_data,test_melchi_schema,one_pk
-melchi_test_data,test_melchi_schema,two_pk
+database,schema,table,cdc_type
+melchi_test_data,test_melchi_schema,no_pk,STANDARD
+melchi_test_data,test_melchi_schema,one_pk,STANDARD
+melchi_test_data,test_melchi_schema,two_pk,APPEND_ONLY
