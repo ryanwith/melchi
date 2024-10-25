@@ -16,10 +16,16 @@ def transfer_schema(config, tables=None):
             target_warehouse.begin_transaction()
             # creates the tables needed for tracking CDC
             target_warehouse.setup_environment()
-            for table_info in tables:
+            for table in tables:
+                table_info = {
+                    "database": table["database"],
+                    "schema": table["schema"],
+                    "table": table["table"]
+                }
+                cdc_type = table["cdc_type"]
                 source_schema = source_warehouse.get_schema(table_info)
                 target_schema = source_warehouse.map_schema_to(table_info, config.target_type)
-                target_warehouse.create_table(table_info, source_schema, target_schema )
+                target_warehouse.create_table(table_info, source_schema, target_schema, cdc_type)
             target_warehouse.commit_transaction()
         except Exception as e:
             target_warehouse.rollback_transaction()

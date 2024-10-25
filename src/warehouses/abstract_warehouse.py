@@ -56,7 +56,7 @@ class AbstractWarehouse(ABC):
         # updates the table table_info in the target warehouse with metadata
         # updates the table source_columns in the target warehouse with the table's schema int he source warehouse
     @abstractmethod
-    def create_table(self, table_info, source_schema, target_schema):
+    def create_table(self, table_info, source_schema, target_schema, cdc_type):
         pass
 
     # gets a table name in a way that can be queried
@@ -126,5 +126,13 @@ class AbstractWarehouse(ABC):
             return target_schema
         else:
             raise NotImplementedError(f"Type mapping from {self.warehouse_type} to {target_warehouse_type} is not implemented")               
+   
+    @abstractmethod
+    def generate_source_sql(self):
+        pass
 
-    
+    def warehouse_type(self):
+        return self.config["type"].upper()
+
+    def get_primary_keys(self, table_info):
+        pass

@@ -3,27 +3,51 @@
 def get_test_tables():
     test_tables = [
     {
-        "schema_location": "data_generators/snowflake/test_table_schemas/no_pk.csv",
+        "schema_location": "tests/data_generators/snowflake/test_table_schemas/no_pk_standard_stream.csv",
         "table_info": {
             "database": "melchi_test_data", 
             "schema": "test_melchi_schema", 
-            "table": "no_pk"
+            "table": "no_pk_standard_stream"
         }
     },
     {
-        "schema_location": "data_generators/snowflake/test_table_schemas/one_pk.csv",
+        "schema_location": "tests/data_generators/snowflake/test_table_schemas/no_pk_append_only_stream.csv",
         "table_info": {
             "database": "melchi_test_data", 
             "schema": "test_melchi_schema", 
-            "table": "one_pk"
+            "table": "no_pk_append_only_stream"
         }
     },
     {
-        "schema_location": "data_generators/snowflake/test_table_schemas/two_pk.csv",
+        "schema_location": "tests/data_generators/snowflake/test_table_schemas/one_pk_standard_stream.csv",
         "table_info": {
             "database": "melchi_test_data", 
             "schema": "test_melchi_schema", 
-            "table": "two_pk"
+            "table": "one_pk_standard_stream"
+        }
+    },
+    {
+        "schema_location": "tests/data_generators/snowflake/test_table_schemas/one_pk_append_only_stream.csv",
+        "table_info": {
+            "database": "melchi_test_data", 
+            "schema": "test_melchi_schema", 
+            "table": "one_pk_append_only_stream"
+        }
+    },
+    {
+        "schema_location": "tests/data_generators/snowflake/test_table_schemas/two_pk_standard_stream.csv",
+        "table_info": {
+            "database": "melchi_test_data", 
+            "schema": "test_melchi_schema", 
+            "table": "two_pk_standard_stream"
+        }
+    },
+    {
+        "schema_location": "tests/data_generators/snowflake/test_table_schemas/two_pk_append_only_stream.csv",
+        "table_info": {
+            "database": "melchi_test_data", 
+            "schema": "test_melchi_schema", 
+            "table": "two_pk_append_only_stream"
         }
     }
     ]

@@ -3,7 +3,6 @@
 import snowflake.connector
 import pandas as pd
 from .abstract_warehouse import AbstractWarehouse
-from ..utils.table_config import get_tables_to_transfer
 
 
 class SnowflakeWarehouse(AbstractWarehouse):
@@ -20,7 +19,9 @@ class SnowflakeWarehouse(AbstractWarehouse):
 
     # CONNECTION METHODS
     
-    def connect(self):
+    def connect(self, role = None):
+        if role == None:
+            role = self.config["role"]
         """Creates a cursor and sets the role and warehouse for operations."""
         connect_params = {
             'account': self.config['account'],
@@ -29,7 +30,7 @@ class SnowflakeWarehouse(AbstractWarehouse):
         }
         self.connection = snowflake.connector.connect(**connect_params)
         self.cursor = self.connection.cursor()
-        self.cursor.execute(f"USE ROLE {self.config["role"]};")
+        self.cursor.execute(f"USE ROLE {role};")
         self.cursor.execute(f"USE WAREHOUSE {self.config["warehouse"]};")
 
     def disconnect(self):
@@ -67,7 +68,7 @@ class SnowflakeWarehouse(AbstractWarehouse):
             schema.append(self.format_schema_row(row))
         return schema
 
-    def create_table(self, table_info, source_schema, target_schema):
+    def create_table(self, table_info, source_schema, target_schema, cdc_type):
         # Implementation for creating a table in Snowflake
         pass
 
@@ -121,30 +122,6 @@ class SnowflakeWarehouse(AbstractWarehouse):
     def setup_target_environment(self):
         pass
 
-    def create_cdc_objects(self, table_info):
-        """
-        Creates a snowflake stream and permanent table for CDC tracking.
-        Generates unique names for stream and processing table.
-        """
-        stream_name = self.get_stream_name(table_info)
-        table_name = f"{table_info["database"]}.{table_info["schema"]}.{table_info["table"]}"
-        stream_processing_table = f"{stream_name}_processing"
-        if self.replace_existing_tables() == True:
-            create_query = f"CREATE OR REPLACE TABLE {stream_processing_table} LIKE {table_name};"
-            create_stream_query = f"CREATE OR REPLACE STREAM {stream_name} ON TABLE {table_name} SHOW_INITIAL_ROWS = true"
-        else:
-            create_query = f"CREATE TABLE {stream_processing_table} IF NOT EXISTS LIKE {table_name};"
-            create_stream_query = f"CREATE STREAM IF NOT EXISTS {stream_name} ON TABLE {table_name} SHOW_INITIAL_ROWS = true"
-        create_stream_processing_table_queries = [
-            create_stream_query,
-            create_query,
-            f"ALTER TABLE {stream_processing_table} ADD COLUMN IF NOT EXISTS\"METADATA$ACTION\" varchar;",
-            f"ALTER TABLE {stream_processing_table} ADD COLUMN IF NOT EXISTS \"METADATA$ISUPDATE\" varchar;",
-            f"ALTER TABLE {stream_processing_table} ADD COLUMN IF NOT EXISTS \"METADATA$ROW_ID\" varchar;"
-        ]
-        for query in create_stream_processing_table_queries:
-            self.cursor.execute(query)
-
     def get_stream_name(self, table_info):
         """Returns the stream name for the given table."""
         database = table_info["database"]
@@ -158,6 +135,33 @@ class SnowflakeWarehouse(AbstractWarehouse):
         schema = table_info["schema"]
         table = table_info["table"]
         return f"{self.get_change_tracking_schema_full_name()}.{database}${schema}${table}_processing"
+
+    def create_cdc_objects(self, table_info):
+        """
+        Creates a snowflake stream and permanent table for CDC tracking.
+        Generates unique names for stream and processing table.
+        """
+        stream_name = self.get_stream_name(table_info)
+        table_name = f"{table_info["database"]}.{table_info["schema"]}.{table_info["table"]}"
+        stream_type = table_info["cdc_type"]
+        append_only_statement = f"APPEND_ONLY = {"TRUE" if stream_type == "APPEND_ONLY_STREAM" else "FALSE"}"
+        stream_processing_table = f"{stream_name}_processing"
+        if self.replace_existing_tables() == True:
+            create_query = f"CREATE OR REPLACE TABLE {stream_processing_table} LIKE {table_name};"
+            create_stream_query = f"CREATE OR REPLACE STREAM {stream_name} ON TABLE {table_name} SHOW_INITIAL_ROWS = true {append_only_statement}"
+        else:
+            create_query = f"CREATE TABLE {stream_processing_table} IF NOT EXISTS LIKE {table_name};"
+            create_stream_query = f"CREATE STREAM IF NOT EXISTS {stream_name} ON TABLE {table_name} SHOW_INITIAL_ROWS = true {append_only_statement}"
+        create_stream_processing_table_queries = [
+            create_stream_query,
+            create_query,
+            f"ALTER TABLE {stream_processing_table} ADD COLUMN IF NOT EXISTS\"METADATA$ACTION\" varchar;",
+            f"ALTER TABLE {stream_processing_table} ADD COLUMN IF NOT EXISTS \"METADATA$ISUPDATE\" varchar;",
+            f"ALTER TABLE {stream_processing_table} ADD COLUMN IF NOT EXISTS \"METADATA$ROW_ID\" varchar;"
+        ]
+        for query in create_stream_processing_table_queries:
+            self.cursor.execute(query)
+
 
     # DATA SYNCHRONIZATION
     
@@ -190,6 +194,72 @@ class SnowflakeWarehouse(AbstractWarehouse):
             return self.cursor.fetchall()
 
     def get_data_as_df(self, query_text):
-        """Executes a query and returns results as a pandas DataFrame."""
-        results = self.execute_query(query_text, True)
-        return pd.DataFrame(results, columns=[desc[0] for desc in self.cursor.description])
+        print(f"Executing query: {query_text}")
+        try:
+            cursor = self.connection.cursor()
+            cursor.execute(query_text)
+            print("Query executed successfully")
+            try:
+                df = cursor.fetch_pandas_all()
+                print(f"Data fetched as DataFrame. Shape: {df.shape}")
+                return df
+            except Exception as e:
+                print(f"Error fetching as DataFrame: {str(e)}")
+                raise
+        except Exception as e:
+            print(f"Error executing query: {str(e)}")
+            raise
+    
+    def get_primary_keys(self, table_info):
+        schema = self.get_schema(table_info)
+        return sorted([col['name'] for col in schema if col['primary_key']])
+
+    def generate_source_sql(self, tables):
+        role = self.config['role']
+        warehouse = self.config['warehouse']
+
+        header_comments = [
+            "-- IMPORTANT: These statements must be executed with appropriate roles that have:",
+            "-- * Permission to create/modify databases and schemas",
+            "-- * Permission to grant privileges",
+            "-- * Permission to modify objects in the target schemas",
+            "-- Multiple roles may be needed depending on your security model.",
+            "\n"
+        ]
+
+        create_change_tracking_schema_statement = [
+            "--This command creates the change tracking schema.  Not required if it already exists.",
+            f"CREATE SCHEMA IF NOT EXISTS {self.get_change_tracking_schema_full_name()};",
+            "\n"
+        ]
+
+        general_grants = [
+            "--These grants enable Melchi to create objects that track changes.",
+            f"GRANT USAGE ON WAREHOUSE {warehouse} TO ROLE {role};",
+            f"GRANT USAGE ON DATABASE {self.config["change_tracking_database"]} TO ROLE {role};",
+            f"GRANT USAGE, CREATE TABLE, CREATE STREAM ON SCHEMA {self.get_change_tracking_schema_full_name()} TO ROLE {role};",
+        ]
+
+        # enable_cdc_statements = ["--These statements enable Melchi to create streams that track changes on the provided tables."]
+        database_grants = []
+        schema_grants = []
+        table_grants = []
+
+        for table in tables:
+            database = table['database']
+            schema = table['schema']
+            table_name = table['table']
+            database_grants.append(f"GRANT USAGE ON DATABASE {database} TO ROLE {role};")
+            schema_grants.append(f"GRANT USAGE ON SCHEMA {database}.{schema} TO ROLE {role};")
+            table_grants.append(f"GRANT SELECT ON TABLE {database}.{schema}.{table_name} TO ROLE {role};")
+            # enable_cdc_statements.append(f"ALTER TABLE {database}.{schema}.{table_name} SET CHANGE_TRACKING = TRUE;")
+
+        database_grants = sorted(list(set(database_grants)))
+        schema_grants = sorted(list(set(schema_grants)))
+
+        database_grants.insert(0, "--These grants enable Melchi to read changes from your objects.")
+
+        general_grants.append("\n")
+
+        all_grants = create_change_tracking_schema_statement + ["\n"] + general_grants + database_grants + schema_grants + table_grants
+        return "\n".join(all_grants)

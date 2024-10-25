@@ -30,7 +30,7 @@ def main():
         file_location = "output" if args.output == None else args.output
         generate_source_sql(config, file_location)
         print(f"{config.source_type.capitalize()} change tracking setup SQL written to {file_location}/source_setup.sql.  Please review the generated SQL and execute it in your {config.source_type} environment.")
-        print(f"\nIMPORTANT: These SQL files need to be executed by a {config.source_type} user with appropriate permissions.")
+        print(f"IMPORTANT: These SQL files need to be executed by a {config.source_type} user with appropriate permissions.")
 
 
 if __name__ == "__main__":

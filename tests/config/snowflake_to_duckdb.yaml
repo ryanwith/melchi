@@ -13,6 +13,7 @@ source:
   cdc_strategy: cdc_streams
   replace_existing: true
   data_generation_role: data_generation_role
+  melchi_role: workhorse
 
 target:
   type: duckdb

@@ -1,6 +1,8 @@
 import pytest
 from unittest.mock import Mock, patch, call
 from src.warehouses.duckdb_warehouse import DuckDBWarehouse
+from datetime import datetime
+from tests.utils.helpers import normalize_sql
 
 @pytest.fixture
 def config():
@@ -94,41 +96,193 @@ def test_generate_create_table_statement(warehouse):
 def test_get_change_tracking_schema_full_name(warehouse):
     assert warehouse.get_change_tracking_schema_full_name() == warehouse.config['change_tracking_schema']
 
-def test_setup_target_environment_with_replace(warehouse):
-    expected_calls = [
-        f"CREATE SCHEMA IF NOT EXISTS {warehouse.config['change_tracking_schema']};",
-        f"""CREATE OR REPLACE TABLE {warehouse.config['change_tracking_schema']}.captured_tables (schema_name varchar, table_name varchar, created_at timestamp, updated_at timestamp, primary_keys varchar[]);""",
-        f"""CREATE OR REPLACE TABLE {warehouse.config['change_tracking_schema']}.source_columns (table_catalog varchar, table_schema varchar, table_name varchar, column_name varchar, data_type varchar, column_default varchar, is_nullable boolean, primary_key boolean);"""
+def test_create_table_with_primary_keys_replace_existing(warehouse):
+    table_info = {
+        "database": "test_db",
+        "schema": "test_schema",
+        "table": "test_table"
+    }
+    
+    source_schema = [
+        {
+            "name": "id",
+            "type": "INTEGER",
+            "nullable": False,
+            "default_value": None,
+            "primary_key": True
+        },
+        {
+            "name": "name",
+            "type": "VARCHAR",
+            "nullable": True,
+            "default_value": None,
+            "primary_key": False
+        }
     ]
     
+    target_schema = source_schema.copy()
+    cdc_type = "FULL_LOAD"
+    
     with patch.object(warehouse.connection, 'execute') as mock_execute:
-        warehouse.setup_target_environment()
+        # Mock datetime to get consistent timestamp
+        with patch('datetime.datetime') as mock_datetime:
+            mock_datetime.now.return_value = datetime(2024, 10, 23, 17, 6, 55)
+            warehouse.create_table(table_info, source_schema, target_schema, cdc_type)
+            
+            expected_calls = [
+                f"CREATE SCHEMA IF NOT EXISTS {table_info['schema']}",
+                
+                f"CREATE OR REPLACE TABLE {table_info['schema']}.{table_info['table']} (id INTEGER NOT NULL, name VARCHAR);",
+                
+                f"""INSERT INTO {warehouse.get_change_tracking_schema_full_name()}.captured_tables VALUES ('test_schema', 'test_table', '2024-10-23 17:06:55', '2024-10-23 17:06:55', ['id'], 'FULL_LOAD');""",
+                
+                f"""INSERT INTO {warehouse.get_change_tracking_schema_full_name()}.source_columns VALUES ( 'test_db', 'test_schema', 'test_table', 'id', 'INTEGER', NULL, FALSE, TRUE ),
+                ( 'test_db', 'test_schema', 'test_table', 'name', 'VARCHAR', NULL, TRUE, FALSE );"""
+            ]
+            
+            assert mock_execute.call_count == 4
+            for i, (expected, actual) in enumerate(zip(expected_calls, mock_execute.call_args_list)):
+                expected_sql = normalize_sql(expected)
+                actual_sql = normalize_sql(actual[0][0])  # Fix is here
+                assert expected_sql == actual_sql, f"Mismatch in query {i+1}"
+
+def test_create_table_without_primary_keys_replace_existing(warehouse):
+    table_info = {
+        "database": "test_db",
+        "schema": "test_schema",
+        "table": "test_table"
+    }
+    
+    source_schema = [
+        {
+            "name": "name",
+            "type": "VARCHAR",
+            "nullable": True,
+            "default_value": None,
+            "primary_key": False
+        }
+    ]
+    
+    target_schema = source_schema.copy()
+    cdc_type = "FULL_LOAD"
+
+    with patch.object(warehouse.connection, 'execute') as mock_execute:
+        warehouse.create_table(table_info, source_schema, target_schema, cdc_type)
         
-        assert mock_execute.call_count == 3
-        actual_calls = [call[0][0].strip() for call in mock_execute.call_args_list]
-        for expected, actual in zip(expected_calls, actual_calls):
-            assert expected.strip() == actual
-
-def test_setup_target_environment_without_replace(config):
-    config['replace_existing'] = False
-    with patch('duckdb.connect') as mock_connect:
-        warehouse = DuckDBWarehouse(config)
-        mock_connection = mock_connect.return_value
-        warehouse.connection = mock_connection
-
         expected_calls = [
-            f"CREATE SCHEMA IF NOT EXISTS {config['change_tracking_schema']};",
-            f"""CREATE TABLE IF NOT EXISTS {config['change_tracking_schema']}.captured_tables (schema_name varchar, table_name varchar, created_at timestamp, updated_at timestamp, primary_keys varchar[]);""",
-            f"""CREATE TABLE IF NOT EXISTS {config['change_tracking_schema']}.source_columns (table_catalog varchar, table_schema varchar, table_name varchar, column_name varchar, data_type varchar, column_default varchar, is_nullable boolean, primary_key boolean);"""
+            # Create schema
+            f"CREATE SCHEMA IF NOT EXISTS {table_info['schema']}",
+            
+            # Create table with auto-generated primary key
+            f"""CREATE OR REPLACE TABLE {table_info['schema']}.{table_info['table']} (name VARCHAR, MELCHI_ROW_ID VARCHAR NOT NULL);""",
+            
+            # Insert metadata with auto-generated primary key
+            f"""INSERT INTO {warehouse.get_change_tracking_schema_full_name()}.captured_tables VALUES ('test_schema', 'test_table', '{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}', '{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}', ['MELCHI_ROW_ID'], 'FULL_LOAD');""",
+            
+            f"""INSERT INTO {warehouse.get_change_tracking_schema_full_name()}.source_columns VALUES ( 'test_db', 'test_schema', 'test_table', 'name', 'VARCHAR', NULL, TRUE, FALSE );"""
         ]
         
-        with patch.object(warehouse.connection, 'execute') as mock_execute:
-            warehouse.setup_target_environment()
+        assert mock_execute.call_count == 4
+        for i, (expected, actual) in enumerate(zip(expected_calls, mock_execute.call_args_list)):
+            expected_sql = normalize_sql(expected)
+            actual_sql = normalize_sql(actual[0][0])
+            assert expected_sql == actual_sql, f"Mismatch in query {i+1}"
+
+def test_create_table_without_primary_keys_no_replace_existing(warehouse):
+    table_info = {
+        "database": "test_db",
+        "schema": "test_schema",
+        "table": "test_table"
+    }
+    
+    source_schema = [
+        {
+            "name": "name",
+            "type": "VARCHAR",
+            "nullable": True,
+            "default_value": None,
+            "primary_key": False
+        }
+    ]
+
+    warehouse.config["replace_existing"] = False
+    
+    target_schema = source_schema.copy()
+    cdc_type = "FULL_LOAD"
+
+    with patch.object(warehouse.connection, 'execute') as mock_execute:
+        warehouse.create_table(table_info, source_schema, target_schema, cdc_type)
+        
+        expected_calls = [
+            # Create schema
+            f"CREATE SCHEMA IF NOT EXISTS {table_info['schema']}",
             
-            assert mock_execute.call_count == 3
-            actual_calls = [call[0][0].strip() for call in mock_execute.call_args_list]
-            for expected, actual in zip(expected_calls, actual_calls):
-                assert expected.strip() == actual
+            # Create table with auto-generated primary key
+            f"""CREATE TABLE IF NOT EXISTS {table_info['schema']}.{table_info['table']} (name VARCHAR, MELCHI_ROW_ID VARCHAR NOT NULL);""",
+            
+            # Insert metadata with auto-generated primary key
+            f"""INSERT INTO {warehouse.get_change_tracking_schema_full_name()}.captured_tables VALUES ('test_schema', 'test_table', '{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}', '{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}', ['MELCHI_ROW_ID'], 'FULL_LOAD');""",
+            
+            f"""INSERT INTO {warehouse.get_change_tracking_schema_full_name()}.source_columns VALUES ( 'test_db', 'test_schema', 'test_table', 'name', 'VARCHAR', NULL, TRUE, FALSE );"""
+        ]
+        
+        assert mock_execute.call_count == 4
+        for i, (expected, actual) in enumerate(zip(expected_calls, mock_execute.call_args_list)):
+            expected_sql = normalize_sql(expected)
+            actual_sql = normalize_sql(actual[0][0])
+            assert expected_sql == actual_sql, f"Mismatch in query {i+1}"
+
+def test_create_table_with_default_values(warehouse):
+    table_info = {
+        "database": "test_db",
+        "schema": "test_schema",
+        "table": "test_table"
+    }
+    
+    source_schema = [
+        {
+            "name": "id",
+            "type": "INTEGER",
+            "nullable": False,
+            "default_value": "1",
+            "primary_key": True
+        },
+        {
+            "name": "status",
+            "type": "VARCHAR",
+            "nullable": True,
+            "default_value": "'ACTIVE'",
+            "primary_key": False
+        }
+    ]
+    
+    target_schema = source_schema.copy()
+    cdc_type = "APPEND_ONLY_STREAM"
+
+    with patch.object(warehouse.connection, 'execute') as mock_execute:
+        warehouse.create_table(table_info, source_schema, target_schema, cdc_type)
+        
+        expected_calls = [
+            # Create schema
+            f"CREATE SCHEMA IF NOT EXISTS {table_info['schema']}",
+            
+            # Create table with default values
+            f"""CREATE OR REPLACE TABLE {table_info['schema']}.{table_info['table']} (id INTEGER NOT NULL, status VARCHAR);""".strip(),
+            
+            # Insert metadata
+            f"""INSERT INTO {warehouse.get_change_tracking_schema_full_name()}.captured_tables VALUES ('test_schema', 'test_table', '{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}', '{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}', ['id'], 'APPEND_ONLY_STREAM');""",
+            
+            f"""INSERT INTO {warehouse.get_change_tracking_schema_full_name()}.source_columns VALUES
+            ( 'test_db', 'test_schema', 'test_table', 'id', 'INTEGER', '1', FALSE, TRUE ),
+            ( 'test_db', 'test_schema', 'test_table', 'status', 'VARCHAR', '''ACTIVE''', TRUE, FALSE );
+            """.strip()
+        ]
+        
+        assert mock_execute.call_count == 4
+        actual_calls = [call[0][0].strip() for call in mock_execute.call_args_list]
+        for expected, actual in zip(expected_calls, actual_calls):
+            assert normalize_sql(expected) == normalize_sql(actual)
+
 
 # Data Synchronization Tests
 def test_sync_table_operations(warehouse):

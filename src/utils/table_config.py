@@ -19,16 +19,16 @@ def get_tables_to_transfer(config):
             i = 1
             for row in reader:
                 # Handle both None and empty string cases
-                raw_cdc_type = row.get("cdc_type")
+                raw_cdc_type = row.get("cdc_type", "STANDARD_STREAM")
                 database = row['database']
                 schema = row['schema']
                 table = row['table']
                 if any(not val for val in (database, schema, table)):
                     raise ValueError(f"You are missing a database, schema, or table name in row {i}.")
-                cdc_type = raw_cdc_type.strip().upper() if raw_cdc_type else "STANDARD"
+                cdc_type = raw_cdc_type.strip().upper() if raw_cdc_type else "STANDARD_STREAM"
 
-                if cdc_type not in ("STANDARD", "APPEND_ONLY"):   
-                    raise ValueError(f"{cdc_type} is not a valid CDC type.  Please provide STANDARD, APPEND_ONLY, or leave it blank to default to STANDARD.")
+                if cdc_type not in ("STANDARD_STREAM", "APPEND_ONLY_STREAM"):   
+                    raise ValueError(f"{cdc_type} is not a valid CDC type.  Please provide STANDARD_STREAM, APPEND_ONLY_STREAM, or leave it blank to default to STANDARD_STREAM.")
 
                 tables.append({
                     'database': database,

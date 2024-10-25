@@ -138,7 +138,7 @@ To use Melchi effectively, you need to set up the correct permissions in Snowfla
 1. Create a dedicated role in Snowflake for Melchi:
 
    ```sql
-   USE ROLE SECURITYADMIN;
+   USE ROLE ACCOUNTADMIN;
    CREATE ROLE melchi_role;
    ```
 

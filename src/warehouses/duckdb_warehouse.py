@@ -2,6 +2,7 @@
 
 import duckdb
 import datetime
+import pandas as pd
 from .abstract_warehouse import AbstractWarehouse
 
 class DuckDBWarehouse(AbstractWarehouse):
@@ -47,7 +48,7 @@ class DuckDBWarehouse(AbstractWarehouse):
             rows.append(self.format_schema_row(row))
         return rows
 
-    def create_table(self, table_info, source_schema, target_schema):
+    def create_table(self, table_info, source_schema, target_schema, cdc_type):
         """
         Creates table with target_schema and adds melchi_id if no primary keys.
         Updates metadata tables with table info and source columns.
@@ -85,26 +86,23 @@ class DuckDBWarehouse(AbstractWarehouse):
             name = f"'{column["name"]}'"
             type = f"'{column["type"]}'"
             nullable = "TRUE" if column["nullable"] == True else "FALSE"
-            default_value = f"'{column["default_value"]}'" if column["default_value"] else "NULL"
+            default_value = f"'{self.format_value_for_insert(column["default_value"])}'" if column["default_value"] else "NULL"
             primary_key = "TRUE" if column["primary_key"] == True else "FALSE"
             source_column_values = f"""(
                 {source_db}, {source_schema_name}, {source_table}, {name}, {type}, {default_value}, {nullable}, {primary_key}
             )"""
             source_columns.append(source_column_values)
 
+        current_timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        
+        # Separate the queries into two distinct statements
         update_logs = [
-            f"""
-            INSERT INTO {self.get_change_tracking_schema_full_name()}.captured_tables VALUES (
-                '{table_info["schema"]}', '{table_info["table"]}', '{current_timestamp}', '{current_timestamp}', {self.convert_list_to_duckdb_syntax(primary_keys)}
-            );"""
-            ,
-            f"""
-            INSERT INTO {self.get_change_tracking_schema_full_name()}.source_columns VALUES
-            {(",\n").join(source_columns)};
-            """
-            ]
+            f"""INSERT INTO {self.get_change_tracking_schema_full_name()}.captured_tables VALUES ('{table_info["schema"]}', '{table_info["table"]}', '{current_timestamp}', '{current_timestamp}', {self.convert_list_to_duckdb_syntax(primary_keys)}, '{cdc_type}');""",
+            f"""INSERT INTO {self.get_change_tracking_schema_full_name()}.source_columns VALUES {(", ").join(source_columns)};"""
+        ]
 
-        self.connection.execute("\n".join(update_logs))
+        for query in update_logs:
+            self.connection.execute(query)
 
     def get_full_table_name(self, table_info):
         """Returns fully qualified table name."""
@@ -138,7 +136,6 @@ class DuckDBWarehouse(AbstractWarehouse):
         for col in schema:
             column_statement = f"{col["name"]} {col["type"]}"
             column_statement += " NOT NULL" if col["nullable"] == False else ""
-            column_statement += f" DEFAULT {col["default_value"]}" if col["default_value"] is not None else ""
             column_statements.append(column_statement)
         full_create_statement = f"{create_statement}({", ".join(column_statements)});"
 
@@ -176,8 +173,9 @@ class DuckDBWarehouse(AbstractWarehouse):
             beginning_of_query = "CREATE OR REPLACE TABLE"
         else:
             beginning_of_query = "CREATE TABLE IF NOT EXISTS"
+        print(beginning_of_query)
         self.connection.execute(f"""{beginning_of_query} {self.get_change_tracking_schema_full_name()}"""
-                                + """.captured_tables (schema_name varchar, table_name varchar, created_at timestamp, updated_at timestamp, primary_keys varchar[]);""")
+                                + """.captured_tables (schema_name varchar, table_name varchar, created_at timestamp, updated_at timestamp, primary_keys varchar[], cdc_type varchar);""")
         self.connection.execute(f"""{beginning_of_query} {self.get_change_tracking_schema_full_name()}"""
                                 + """.source_columns (table_catalog varchar, table_schema varchar, table_name varchar, column_name varchar, data_type varchar, column_default varchar, is_nullable boolean, primary_key boolean);""")
 
@@ -231,8 +229,22 @@ class DuckDBWarehouse(AbstractWarehouse):
         captured_tables = f"{self.get_change_tracking_schema_full_name()}.captured_tables"
         get_primary_keys_query = f"""SELECT primary_keys FROM {captured_tables}
                 WHERE table_name = '{table_info["table"]}' and schema_name = '{table_info["schema"]}'"""
-        primary_keys = self.connection.execute(get_primary_keys_query).fetchone()[0]
+        primary_keys = sorted(self.connection.execute(get_primary_keys_query).fetchone()[0])
         return primary_keys
+    
+    def get_data_as_df(self, query_text):
+        try:
+            df = self.connection.execute(query_text).df()
+            
+            # Convert problematic datetime columns to strings
+            for col in df.select_dtypes(include=['datetime64']).columns:
+                df[col] = df[col].astype(str)
+            
+            return df
+        except Exception as e:
+            print(f"Error executing query: {query_text}")
+            print(f"Error details: {str(e)}")
+            raise
 
     # UTILITY METHODS
 
@@ -243,3 +255,13 @@ class DuckDBWarehouse(AbstractWarehouse):
     def convert_list_to_duckdb_syntax(self, python_list):
         """Converts Python list to DuckDB array syntax."""
         return f"[{", ".join(list(map(lambda item: f"'{item}'", python_list)))}]"
+    
+    def format_value_for_insert(self, value):
+        if type(value) == str:
+            return value.replace("'", "''")
+        else:
+            return value
+        
+    def generate_source_sql(self):
+        pass
+
