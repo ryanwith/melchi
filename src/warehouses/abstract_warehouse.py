@@ -136,3 +136,10 @@ class AbstractWarehouse(ABC):
 
     def get_primary_keys(self, table_info):
         pass
+
+    @abstractmethod
+    def get_data_as_df_for_comparison(self, table_name, order_by_column = None):
+        """
+        Retrieves data as a DataFrame, with adjustments for consistent comparison across different warehouse types.
+        """
+        pass

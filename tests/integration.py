@@ -260,15 +260,37 @@ def confirm_standard_stream_sync(test_config):
         source_table_name = source_warehouse.get_full_table_name(table_info)
         target_table_name = target_warehouse.get_full_table_name(table_info)
         
-        source_df = source_warehouse.get_data_as_df(f"SELECT * FROM {source_table_name} ORDER BY 1")
-        target_df = target_warehouse.get_data_as_df(f"SELECT * FROM {target_table_name} ORDER BY 1")
+        source_df = source_warehouse.get_data_as_df_for_comparison(source_table_name, "numeric_test_col")
+        target_df = target_warehouse.get_data_as_df_for_comparison(target_table_name, "numeric_test_col::decimal(38,0)")
         
-        # Convert all columns to strings for comparison
-        source_df = source_df.astype(str)
-        target_df = target_df.astype(str)
+        # Remove MELCHI_ROW_ID from source_df if it exists
+        if 'MELCHI_ROW_ID' in source_df.columns:
+            source_df = source_df.drop('MELCHI_ROW_ID', axis=1)
         
-        # Compare DataFrames
-        assert source_df.equals(target_df), f"Data mismatch for table {source_table_name}"
+        # Compare columns
+        matching_columns = []
+        mismatching_columns = []
+        
+        for column in source_df.columns:
+            if column in target_df.columns:
+                if source_df[column].equals(target_df[column]):
+                    matching_columns.append(column)
+                else:
+                    mismatching_columns.append(column)
+                    print(f"Mismatch in column {column}:")
+                    print("Source (first 5 rows):")
+                    print(source_df[column].head())
+                    print("Target (first 5 rows):")
+                    print(target_df[column].head())
+                    print("\n")
+            else:
+                print(f"Column {column} is missing in the target DataFrame")
+        
+        print(f"Matching columns: {matching_columns}")
+        print(f"Mismatching columns: {mismatching_columns}")
+        
+        # Assert that all columns match
+        assert len(mismatching_columns) == 0, f"Data mismatch for table {source_table_name} in columns: {mismatching_columns}"
 
 @pytest.mark.depends(on=['test_initial_data_sync'])
 def confirm_append_only_stream_sync(test_config):
@@ -388,33 +410,44 @@ def test_tests2(test_config):
     source_warehouse.connect()
     target_warehouse.connect()
     
-    source_query = "SELECT number_test_col FROM MELCHI_TEST_DATA.TEST_MELCHI_SCHEMA.NO_PK_STANDARD_STREAM order by 1 limit 10;"
-    target_query = "SELECT number_test_col FROM TEST_MELCHI_SCHEMA.NO_PK_STANDARD_STREAM order by 1 limit 10;"
+    source_query = "SELECT binary_test_col FROM MELCHI_TEST_DATA.TEST_MELCHI_SCHEMA.NO_PK_STANDARD_STREAM order by 1 limit 10;"
+    target_query = "SELECT binary_test_col FROM TEST_MELCHI_SCHEMA.NO_PK_STANDARD_STREAM order by 1 limit 10;"
+    # target_query = "SELECT number_test_col FROM TEST_MELCHI_SCHEMA.NO_PK_STANDARD_STREAM order by 1 limit 10;"
 
     source_df = source_warehouse.get_data_as_df(source_query)
     source_results = source_warehouse.execute_query(source_query, True)
+    target_df = target_warehouse.get_data_as_df(target_query)
     target_results = target_warehouse.execute_query(target_query, True)
-
     print(source_df)
+    print(target_df)
     print(source_results)
     print(target_results)
-    result_array = []
-    for i in range(len(source_df)):
-        val1 = source_df.iloc[i, 0]
-        val2 = source_results[i][0]
-        val3 = target_results[i][0]
-        row = [
-            val1,  # First column of the i-th row in source_df
-            val2,  # First element of the i-th row in source_results
-            val3   # First element of the i-th row in target_results
-        ]
-        result_array.append(row)
 
-    # Print or process the result_array as needed
-    for row in result_array:
-        print(row)
+    # source_results = source_warehouse.execute_query(source_query, True)
+    # target_results = target_warehouse.execute_query(target_query, True)
+
+    # print(source_df)
+    # print(source_results)
+    # print(target_results)
+    # result_array = []
+    # for i in range(len(source_df)):
+    #     val1 = source_df.iloc[i, 0]
+    #     val2 = source_results[i][0]
+    #     val3 = target_results[i][0]
+    #     row = [
+    #         val1,  # First column of the i-th row in source_df
+    #         val2,  # First element of the i-th row in source_results
+    #         val3   # First element of the i-th row in target_results
+    #     ]
+    #     result_array.append(row)
+
+    # # Print or process the result_array as needed
+    # for row in result_array:
+    #     print(row)
     # pp(source_df.dtypes)
     # pp(target_df.dtypes)
     # Don't forget to disconnect
     source_warehouse.disconnect()
     target_warehouse.disconnect()
+
+

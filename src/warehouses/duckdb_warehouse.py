@@ -4,6 +4,7 @@ import duckdb
 import datetime
 import pandas as pd
 from .abstract_warehouse import AbstractWarehouse
+from decimal import Decimal
 
 class DuckDBWarehouse(AbstractWarehouse):
     """
@@ -234,23 +235,83 @@ class DuckDBWarehouse(AbstractWarehouse):
     
     def get_data_as_df(self, query_text):
         try:
-            df = self.connection.execute(query_text).df()
+            # First, get the result set
+            result = self.connection.execute(query_text)
             
-            # Convert problematic datetime columns to strings
-            for col in df.select_dtypes(include=['datetime64']).columns:
-                df[col] = df[col].astype(str)
+            # Get column names and types
+            column_info = result.description
             
+            # Prepare a list to store modified column expressions
+            modified_columns = []
+            
+            for col in column_info:
+                col_name = col[0]
+                col_type = col[1]
+                
+                # Convert only DATE and TIME types to varchar
+                if col_type.upper() in ['DATE', 'TIME']:
+                    modified_columns.append(f"CAST({col_name} AS VARCHAR) AS {col_name}")
+                else:
+                    modified_columns.append(col_name)
+            
+            # Construct a new query with type casts
+            modified_query = f"SELECT {', '.join(modified_columns)} FROM ({query_text.strip(";")}) subquery"
+            # Execute the modified query and return as DataFrame
+            df = self.connection.execute(modified_query).df()
             return df
         except Exception as e:
             print(f"Error executing query: {query_text}")
             print(f"Error details: {str(e)}")
             raise
 
+    def get_data_as_df_for_comparison(self, table_name, order_by_column = None):
+        order_by_column = 1 if order_by_column == None else order_by_column
+        
+        column_types_query = f"PRAGMA table_info('{table_name}')"
+        column_types_raw = self.execute_query(column_types_query, True)
+
+        column_expressions = []
+        binary_columns = []
+        for col in column_types_raw:
+            col_name, col_type = col[1], col[2].lower()
+            if 'decimal' in col_type or 'numeric' in col_type:
+                column_expressions.append(f"CAST({col_name} AS VARCHAR) AS {col_name}")
+            if "binary" in col_name.lower():
+                column_expressions.append(col_name)
+                binary_columns.append(col_name)
+            elif 'date' in col_type:
+                column_expressions.append(f"CAST({col_name} AS VARCHAR) AS {col_name}")
+            elif 'time' in col_type:
+                column_expressions.append(f"CAST({col_name} AS VARCHAR) AS {col_name}")
+            else:
+                column_expressions.append(col_name)
+
+        subquery = f"SELECT {', '.join(column_expressions)} FROM {table_name} order by {order_by_column};"
+        df = self.get_data_as_df(subquery)
+
+        # Convert specific columns to ensure consistent representation
+        for col in df.columns:
+            if df[col].dtype.name.startswith('decimal'):
+                df[col] = df[col].astype(str)
+            elif df[col].dtype.name in ['datetime64[ns]', 'date', 'time']:
+                df[col] = df[col].astype(object)
+        print(df.columns)
+        df = df.astype(str)
+
+        for col in binary_columns:
+            print(df.columns)
+            df[col] = df[col].apply(lambda x: x[10:-1] if isinstance(x, str) and len(x) > 11 else x)
+
+
+        return df
+
     # UTILITY METHODS
 
     def execute_query(self, query_text, return_results = False):
         """Executes a query, mainly used for testing."""
         self.connection.execute(query_text)
+        if return_results == True:
+            return self.connection.fetchall()
 
     def convert_list_to_duckdb_syntax(self, python_list):
         """Converts Python list to DuckDB array syntax."""
@@ -264,4 +325,7 @@ class DuckDBWarehouse(AbstractWarehouse):
         
     def generate_source_sql(self):
         pass
+
+    def format_binary_for_comparison(self, value):
+        return value.hex()
 

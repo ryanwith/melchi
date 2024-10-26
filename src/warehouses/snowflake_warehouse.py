@@ -263,3 +263,11 @@ class SnowflakeWarehouse(AbstractWarehouse):
 
         all_grants = create_change_tracking_schema_statement + ["\n"] + general_grants + database_grants + schema_grants + table_grants
         return "\n".join(all_grants)
+
+    def get_data_as_df_for_comparison(self, table_name, order_by_column = None):
+        order_by_column = 1 if order_by_column == None else order_by_column
+        # self.execute_query("ALTER SESSION SET NUMBER_FORMAT = 'E30;")
+        df =  self.get_data_as_df(f"SELECT * FROM {table_name} order by {order_by_column};")
+        print("Snowflake binary when accessed as df['binary_test_col']")
+        print(df["BINARY_TEST_COL"])
+        return df.astype(str)
