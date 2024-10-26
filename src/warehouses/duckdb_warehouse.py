@@ -313,7 +313,11 @@ class DuckDBWarehouse(AbstractWarehouse):
         df = df.astype(str)
 
         for col in binary_columns:
-            df[col] = df[col].apply(lambda x: x[10:-1] if isinstance(x, str) and len(x) > 11 else x)
+            df[col] = df[col].apply(lambda x: x[10:-1].replace("\\'", "'") if isinstance(x, str) and len(x) > 11 else x)
+
+    # for col in binary_columns:
+    #     # Replace escaped single quotes with unescaped ones in binary string representations
+    #     df[col] = df[col].apply(lambda x: x.replace("\\'", "'") if isinstance(x, str) else x)
 
         return df
 

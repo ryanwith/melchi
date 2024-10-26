@@ -279,9 +279,9 @@ def confirm_standard_stream_sync(test_config):
                     mismatching_columns.append(column)
                     print(f"Mismatch in column {column}:")
                     print("Source (first 5 rows):")
-                    print(source_df[column].head())
+                    print(source_df[column])
                     print("Target (first 5 rows):")
-                    print(target_df[column].head())
+                    print(target_df[column])
                     print("\n")
             else:
                 print(f"Column {column} is missing in the target DataFrame")

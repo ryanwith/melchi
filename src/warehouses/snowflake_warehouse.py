@@ -195,7 +195,6 @@ class SnowflakeWarehouse(AbstractWarehouse):
             return self.cursor.fetchall()
 
     def get_data_as_df(self, query_text):
-        print(f"Executing query: {query_text}")
         try:
             cursor = self.connection.cursor()
             cursor.execute(query_text)
