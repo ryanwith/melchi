@@ -276,9 +276,20 @@ class DuckDBWarehouse(AbstractWarehouse):
             col_name, col_type = col[1], col[2].lower()
             if 'decimal' in col_type or 'numeric' in col_type:
                 column_expressions.append(f"CAST({col_name} AS VARCHAR) AS {col_name}")
-            if "binary" in col_name.lower():
+            elif "binary" in col_name.lower():
                 column_expressions.append(col_name)
                 binary_columns.append(col_name)
+            elif 'timestamp with time zone' in col_type:
+                # Format timestamp columns consistently with 6 decimal places for fractional seconds
+                # column_expressions.append(f"STRFTIME({col_name}, '%Y-%m-%d %H:%M:%S.%f%z') AS {col_name}")
+                column_expressions.append(f"""
+                    CASE 
+                        WHEN LENGTH(STRFTIME({col_name}, '%z')) = 3 
+                        THEN STRFTIME({col_name}, '%Y-%m-%d %H:%M:%S.%f') || STRFTIME({col_name}, '%z') || '00'
+                        ELSE STRFTIME({col_name}, '%Y-%m-%d %H:%M:%S.%f%z')
+                    END AS {col_name}
+                """.strip())
+
             elif 'date' in col_type:
                 column_expressions.append(f"CAST({col_name} AS VARCHAR) AS {col_name}")
             elif 'time' in col_type:
@@ -294,14 +305,15 @@ class DuckDBWarehouse(AbstractWarehouse):
             if df[col].dtype.name.startswith('decimal'):
                 df[col] = df[col].astype(str)
             elif df[col].dtype.name in ['datetime64[ns]', 'date', 'time']:
-                df[col] = df[col].astype(object)
-        print(df.columns)
+                df[col] = df[col].astype(str)
+            elif 'timestamp' in col.lower():
+                # Ensure consistent formatting for timestamp columns
+                df[col] = df[col].apply(lambda x: x[:26] + x[26:].replace(':', ''))
+        
         df = df.astype(str)
 
         for col in binary_columns:
-            print(df.columns)
             df[col] = df[col].apply(lambda x: x[10:-1] if isinstance(x, str) and len(x) > 11 else x)
-
 
         return df
 
@@ -328,4 +340,6 @@ class DuckDBWarehouse(AbstractWarehouse):
 
     def format_binary_for_comparison(self, value):
         return value.hex()
+
+
 

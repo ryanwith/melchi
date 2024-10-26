@@ -423,30 +423,6 @@ def test_tests2(test_config):
     print(source_results)
     print(target_results)
 
-    # source_results = source_warehouse.execute_query(source_query, True)
-    # target_results = target_warehouse.execute_query(target_query, True)
-
-    # print(source_df)
-    # print(source_results)
-    # print(target_results)
-    # result_array = []
-    # for i in range(len(source_df)):
-    #     val1 = source_df.iloc[i, 0]
-    #     val2 = source_results[i][0]
-    #     val3 = target_results[i][0]
-    #     row = [
-    #         val1,  # First column of the i-th row in source_df
-    #         val2,  # First element of the i-th row in source_results
-    #         val3   # First element of the i-th row in target_results
-    #     ]
-    #     result_array.append(row)
-
-    # # Print or process the result_array as needed
-    # for row in result_array:
-    #     print(row)
-    # pp(source_df.dtypes)
-    # pp(target_df.dtypes)
-    # Don't forget to disconnect
     source_warehouse.disconnect()
     target_warehouse.disconnect()
 

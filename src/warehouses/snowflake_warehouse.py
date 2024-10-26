@@ -3,6 +3,7 @@
 import snowflake.connector
 import pandas as pd
 from .abstract_warehouse import AbstractWarehouse
+import re
 
 
 class SnowflakeWarehouse(AbstractWarehouse):
@@ -266,8 +267,28 @@ class SnowflakeWarehouse(AbstractWarehouse):
 
     def get_data_as_df_for_comparison(self, table_name, order_by_column = None):
         order_by_column = 1 if order_by_column == None else order_by_column
-        # self.execute_query("ALTER SESSION SET NUMBER_FORMAT = 'E30;")
-        df =  self.get_data_as_df(f"SELECT * FROM {table_name} order by {order_by_column};")
-        print("Snowflake binary when accessed as df['binary_test_col']")
-        print(df["BINARY_TEST_COL"])
-        return df.astype(str)
+        
+        # Get column information
+        column_info = self.execute_query(f"DESC TABLE {table_name}", return_results=True)
+        
+        column_expressions = []
+        timestamp_tz_columns = []
+        for col in column_info:
+            col_name, col_type = col[0], col[1].lower()
+            if "timestamp_tz" in col_type or "timestamp_ltz" in col_type:
+                column_expressions.append(f"TO_CHAR({col_name}, 'YYYY-MM-DD HH24:MI:SS.FF6TZH:TZM') AS {col_name}")
+                timestamp_tz_columns.append(col_name)
+            else:
+                column_expressions.append(col_name)
+        
+        query = f"SELECT {', '.join(column_expressions)} FROM {table_name} ORDER BY {order_by_column}"
+        df = self.get_data_as_df(query)
+        
+        # Format timestamp columns
+        for col in timestamp_tz_columns:
+            df[col] = df[col].apply(lambda x: re.sub(r'([-+]\d{2}):(\d{2})$', r'\1\2', x))
+        
+        # Convert all columns to string for consistent comparison
+        df = df.astype(str)
+        
+        return df
