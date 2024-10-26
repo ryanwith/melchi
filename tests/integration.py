@@ -361,16 +361,60 @@ def test_cdc(test_config, request):
         pytest.skip("Skipping as previous tests failed")
     update_records(test_config)
     sync_data(test_config)    
-    # confirm_standard_stream_sync(test_config)
-    # confirm_append_only_stream_sync(test_config)
 
-# def test_tests(test_config):
-#     source_warehouse = WarehouseFactory.create_warehouse(test_config.source_type, test_config.source_config)
-#     source_warehouse.connect()
-#     source_query = "SELECT date_test_col, datetime_test_col FROM MELCHI_TEST_DATA.TEST_MELCHI_SCHEMA.NO_PK_APPEND_ONLY_STREAM limit 10;"
-#     source_df = source_warehouse.get_data_as_df(source_query)
-#     target_warehouse = WarehouseFactory.create_warehouse(test_config.target_type, test_config.target_config)
-#     target_query = "SELECT date_test_col, datetime_test_col FROM TEST_MELCHI_SCHEMA.NO_PK_APPEND_ONLY_STREAM limit 10;"
-#     target_df = target_warehouse.get_data_as_df(target_query)
-#     pp(source_df)
-#     pp(target_df)
+@pytest.mark.depends(on=['test_cdc'])
+def test_cdc_consistency(test_config):
+    confirm_standard_stream_sync(test_config)
+    confirm_append_only_stream_sync(test_config)
+
+def test_tests(test_config):
+    source_warehouse = WarehouseFactory.create_warehouse(test_config.source_type, test_config.source_config)
+    source_warehouse.connect()
+    source_query = "SELECT * FROM MELCHI_TEST_DATA.TEST_MELCHI_SCHEMA.NO_PK_APPEND_ONLY_STREAM order by 1 limit 10;"
+    source_df = source_warehouse.get_data_as_df(source_query)
+    target_warehouse = WarehouseFactory.create_warehouse(test_config.target_type, test_config.target_config)
+    target_warehouse.connect()
+    target_query = "SELECT * FROM TEST_MELCHI_SCHEMA.NO_PK_APPEND_ONLY_STREAM order by 1 limit 0;"
+    target_df = target_warehouse.get_data_as_df(target_query)
+    pp(source_df)
+    pp(target_df)
+    pp(source_df.dtypes)
+    pp(target_df.dtypes)
+
+def test_tests2(test_config):
+    source_warehouse = WarehouseFactory.create_warehouse(test_config.source_type, test_config.source_config)
+    target_warehouse = WarehouseFactory.create_warehouse(test_config.target_type, test_config.target_config)
+    
+    source_warehouse.connect()
+    target_warehouse.connect()
+    
+    source_query = "SELECT number_test_col FROM MELCHI_TEST_DATA.TEST_MELCHI_SCHEMA.NO_PK_STANDARD_STREAM order by 1 limit 10;"
+    target_query = "SELECT number_test_col FROM TEST_MELCHI_SCHEMA.NO_PK_STANDARD_STREAM order by 1 limit 10;"
+
+    source_df = source_warehouse.get_data_as_df(source_query)
+    source_results = source_warehouse.execute_query(source_query, True)
+    target_results = target_warehouse.execute_query(target_query, True)
+
+    print(source_df)
+    print(source_results)
+    print(target_results)
+    result_array = []
+    for i in range(len(source_df)):
+        val1 = source_df.iloc[i, 0]
+        val2 = source_results[i][0]
+        val3 = target_results[i][0]
+        row = [
+            val1,  # First column of the i-th row in source_df
+            val2,  # First element of the i-th row in source_results
+            val3   # First element of the i-th row in target_results
+        ]
+        result_array.append(row)
+
+    # Print or process the result_array as needed
+    for row in result_array:
+        print(row)
+    # pp(source_df.dtypes)
+    # pp(target_df.dtypes)
+    # Don't forget to disconnect
+    source_warehouse.disconnect()
+    target_warehouse.disconnect()
