@@ -114,11 +114,8 @@ class SnowflakeWarehouse(AbstractWarehouse):
         if tables_to_transfer == []:
             raise Exception("No tables to transfer found")
 
-        if self.config["cdc_strategy"] == "cdc_streams":
-            for table_info in tables_to_transfer:
-                self.create_cdc_objects(table_info)
-        else:
-            raise ValueError(f"Invalid or no cdc_strategy provided")
+        for table_info in tables_to_transfer:
+            self.create_stream_objects(table_info)
 
     def setup_target_environment(self):
         pass
@@ -137,15 +134,15 @@ class SnowflakeWarehouse(AbstractWarehouse):
         table = table_info["table"]
         return f"{self.get_change_tracking_schema_full_name()}.{database}${schema}${table}_processing"
 
-    def create_cdc_objects(self, table_info):
+    def create_stream_objects(self, table_info):
         """
         Creates a snowflake stream and permanent table for CDC tracking.
         Generates unique names for stream and processing table.
         """
         stream_name = self.get_stream_name(table_info)
         table_name = f"{table_info["database"]}.{table_info["schema"]}.{table_info["table"]}"
-        stream_type = table_info["cdc_type"]
-        append_only_statement = f"APPEND_ONLY = {"TRUE" if stream_type == "APPEND_ONLY_STREAM" else "FALSE"}"
+        cdc_type = table_info["cdc_type"]
+        append_only_statement = f"APPEND_ONLY = {"TRUE" if cdc_type == "APPEND_ONLY_STREAM" else "FALSE"}"
         stream_processing_table = f"{stream_name}_processing"
         if self.replace_existing_tables() == True:
             create_query = f"CREATE OR REPLACE TABLE {stream_processing_table} LIKE {table_name};"

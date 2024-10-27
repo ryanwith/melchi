@@ -10,7 +10,6 @@ source:
   change_tracking_database: cdc_metadata_tables
   change_tracking_schema: melchi_metadata
   role: ${TEST_SNOWFLAKE_ROLE}
-  cdc_strategy: cdc_streams
   replace_existing: true
   data_generation_role: data_generation_role
   melchi_role: workhorse

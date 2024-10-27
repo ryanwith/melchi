@@ -9,7 +9,6 @@ source:
   warehouse: compute_wh
   change_tracking_database: melchi_cdc_db
   change_tracking_schema: streams
-  cdc_strategy: cdc_streams
   replace_existing: true
 
 target:

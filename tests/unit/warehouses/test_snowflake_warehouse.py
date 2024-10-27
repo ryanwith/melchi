@@ -230,7 +230,7 @@ class TestSnowflakeWarehouse:
         snowflake_source_warehouse.config["replace_existing"] = True
 
         # Execute the method
-        snowflake_source_warehouse.create_cdc_objects(table_info)
+        snowflake_source_warehouse.create_stream_objects(table_info)
         
         # Verify correct SQL statements were executed
         expected_calls = [
@@ -266,7 +266,7 @@ class TestSnowflakeWarehouse:
         }
         
         # Execute the method
-        snowflake_source_warehouse.create_cdc_objects(table_info)
+        snowflake_source_warehouse.create_stream_objects(table_info)
         
         # Verify correct SQL statements were executed
         expected_calls = [
@@ -302,7 +302,7 @@ class TestSnowflakeWarehouse:
         }
         
         # Execute the method
-        snowflake_source_warehouse.create_cdc_objects(table_info)
+        snowflake_source_warehouse.create_stream_objects(table_info)
         
         # Verify correct SQL statements were executed
         expected_calls = [
