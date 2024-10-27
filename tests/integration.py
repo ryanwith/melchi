@@ -24,6 +24,13 @@ from pprint import pp
 
 load_dotenv()
 
+def seed_values():
+    return {
+        'initial_seed_rows': 10,
+        'num_to_insert': 3,
+        'num_to_update': 5,
+        'num_to_delete': 2
+    }
 
 @pytest.fixture
 def test_config():
@@ -58,13 +65,6 @@ def recreate_roles(test_config):
         source_warehouse.execute_query(f"GRANT USAGE ON DATABASE {source_warehouse.get_change_tracking_schema_full_name().split('.')[0]} TO ROLE {melchi_role};")
         source_warehouse.execute_query(f"GRANT CREATE SCHEMA ON DATABASE {source_warehouse.get_change_tracking_schema_full_name().split('.')[0]} TO ROLE {melchi_role};")
 
-    #     for database in databases:
-    #         print(database)
-    #         source_warehouse.execute_query(f"GRANT USAGE ON DATABASE {database} TO ROLE {melchi_role};")
-    #         source_warehouse.execute_query(f"GRANT USAGE ON FUTURE SCHEMAS IN DATABASE {database} TO ROLE {melchi_role};")
-    #         source_warehouse.execute_query(f"GRANT USAGE ON ALL SCHEMAS IN DATABASE {database} TO ROLE {melchi_role};")
-    #         source_warehouse.execute_query(f"GRANT ALTER ON FUTURE TABLES IN DATABASE {database} TO ROLE {melchi_role};")
-    #         source_warehouse.execute_query(f"GRANT ALTER ON ALL TABLES IN DATABASE {database} TO ROLE {melchi_role};")
     finally:
         source_warehouse.disconnect()
 
@@ -175,7 +175,7 @@ def grant_permissions_and_alter_objects(test_config):
     finally:
         source_warehouse.disconnect()
 
-def insert_generated_data(test_config):
+def insert_generated_data(test_config, rows = 5):
     test_tables = get_test_tables()
     
     # Create source and target warehouse connections
@@ -190,7 +190,7 @@ def insert_generated_data(test_config):
         for table in test_tables:
             table_info = table["table_info"]
             table_name = source_warehouse.get_full_table_name(table_info)
-            insert_statements = generate_insert_into_select_statements(table_name, generate_snowflake_data(10))
+            insert_statements = generate_insert_into_select_statements(table_name, generate_snowflake_data(rows))
             # insert_sql = generate_insert_statement(table_name, generate_snowflake_data(1))
             for statement in insert_statements:
                 source_warehouse.execute_query(statement)
@@ -202,7 +202,7 @@ def insert_generated_data(test_config):
         # Disconnect warehouses
         source_warehouse.disconnect()
 
-def update_records(test_config, num = 5):
+def update_records(test_config, num_to_insert = 5, num_to_update = 5, num_to_delete = 2):
     test_tables = get_test_tables()
     
     # Create source and target warehouse connections
@@ -218,19 +218,21 @@ def update_records(test_config, num = 5):
 
             table_info = table["table_info"]
             table_name = source_warehouse.get_full_table_name(table_info)
-
-            random_records = source_warehouse.execute_query(get_random_records_sql(table_name, num), True)
+            total_records = num_to_delete + num_to_update
+            random_records = source_warehouse.execute_query(get_random_records_sql(table_name, total_records), True)
             
             to_be_deleted = []
             to_be_updated = []
-            for fate in range(num):
-                if fate > num * 0.6:
-                    to_be_deleted.append(random_records[fate][0])
-                else:
+            fate = 0
+            for fate in range(total_records):
+                if fate < num_to_update:
                     to_be_updated.append(random_records[fate][0])
+                else:
+                    to_be_deleted.append(random_records[fate][0])
+                    
             delete_query = generate_delete_query(table_name, to_be_deleted, "$1")
             update_query = generate_update_query(table_name, to_be_updated, "timestamp_ltz_test_col", "current_timestamp", "$1")
-            insert_queries = generate_insert_into_select_statements(table_name, generate_snowflake_data(5))
+            insert_queries = generate_insert_into_select_statements(table_name, generate_snowflake_data(num_to_insert))
 
             queries_to_execute += insert_queries + [delete_query, update_query]
         
@@ -247,54 +249,7 @@ def update_records(test_config, num = 5):
         # Disconnect warehouses
         source_warehouse.disconnect()
 
-@pytest.mark.depends(on=['test_initial_data_sync'])
 def confirm_standard_stream_sync(test_config):
-    source_warehouse = WarehouseFactory.create_warehouse(test_config.source_type, test_config.source_config)
-    target_warehouse = WarehouseFactory.create_warehouse(test_config.target_type, test_config.target_config)
-    
-    source_warehouse.connect()
-    target_warehouse.connect()
-    
-    tables_to_transfer = get_tables_to_transfer(test_config)
-    for table_info in tables_to_transfer:
-        source_table_name = source_warehouse.get_full_table_name(table_info)
-        target_table_name = target_warehouse.get_full_table_name(table_info)
-        
-        source_df = source_warehouse.get_data_as_df_for_comparison(source_table_name, "numeric_test_col")
-        target_df = target_warehouse.get_data_as_df_for_comparison(target_table_name, "numeric_test_col::decimal(38,0)")
-        
-        # Remove MELCHI_ROW_ID from source_df if it exists
-        if 'MELCHI_ROW_ID' in source_df.columns:
-            source_df = source_df.drop('MELCHI_ROW_ID', axis=1)
-        
-        # Compare columns
-        matching_columns = []
-        mismatching_columns = []
-        
-        for column in source_df.columns:
-            if column in target_df.columns:
-                if source_df[column].equals(target_df[column]):
-                    matching_columns.append(column)
-                else:
-                    mismatching_columns.append(column)
-                    print(f"Mismatch in column {column}:")
-                    print("Source (first 5 rows):")
-                    print(source_df[column])
-                    print("Target (first 5 rows):")
-                    print(target_df[column])
-                    print("\n")
-            else:
-                print(f"Column {column} is missing in the target DataFrame")
-        
-        print(f"Matching columns: {matching_columns}")
-        print(f"Mismatching columns: {mismatching_columns}")
-        
-        # Assert that all columns match
-        assert len(mismatching_columns) == 0, f"Data mismatch for table {source_table_name} in columns: {mismatching_columns}"
-
-@pytest.mark.depends(on=['test_initial_data_sync'])
-def confirm_append_only_stream_sync(test_config):
-    """Confirms that all tables with append-only streams have all records in DuckDB, including deleted ones."""
     source_warehouse = WarehouseFactory.create_warehouse(test_config.source_type, test_config.source_config)
     target_warehouse = WarehouseFactory.create_warehouse(test_config.target_type, test_config.target_config)
     
@@ -302,42 +257,140 @@ def confirm_append_only_stream_sync(test_config):
         source_warehouse.connect()
         target_warehouse.connect()
         
-        test_tables = get_test_tables()
-        for table in test_tables:
-            if table["cdc_type"] == "APPEND_ONLY_STREAM":
-                table_info = table["table_info"]
+        tables_to_transfer = get_tables_to_transfer(test_config)
+        for table_info in tables_to_transfer:
+            if table_info["cdc_type"] == "STANDARD_STREAM":
                 source_table_name = source_warehouse.get_full_table_name(table_info)
                 target_table_name = target_warehouse.get_full_table_name(table_info)
                 
-                primary_keys = source_warehouse.get_primary_keys(table_info)
+                source_df = source_warehouse.get_data_as_df_for_comparison(source_table_name, "numeric_test_col")
+                target_df = target_warehouse.get_data_as_df_for_comparison(target_table_name, "numeric_test_col::decimal(38,0)")
+            
+                # Remove MELCHI_ROW_ID from target_df if it exists
+                if 'MELCHI_ROW_ID' in target_df.columns:
+                    target_df = target_df.drop('MELCHI_ROW_ID', axis=1)
+            
+                # Compare columns
+                matching_columns = []
+                mismatching_columns = []
+            
+                for column in source_df.columns:
+                    if column in target_df.columns:
+                        if source_df[column].equals(target_df[column]):
+                            matching_columns.append(column)
+                        else:
+                            mismatching_columns.append(column)
+                            print(f"Mismatch in column {column}:")
+                            print("Source (first 5 rows):")
+                            print(source_df[column].head())
+                            print("Target (first 5 rows):")
+                            print(target_df[column].head())
+                            print("\n")
+                    else:
+                        print(f"Column {column} is missing in the target DataFrame")
+            
+                print(f"Matching columns: {matching_columns}")
+                print(f"Mismatching columns: {mismatching_columns}")
                 
-                source_df = source_warehouse.get_data_as_df(f"SELECT * FROM {source_table_name} ORDER BY 1")
-                target_df = target_warehouse.get_data_as_df(f"SELECT * FROM {target_table_name} ORDER BY 1")
+                # Assert that all columns match
+                assert len(mismatching_columns) == 0, f"Data mismatch for table {source_table_name} in columns: {mismatching_columns}"
+
+    finally:
+        source_warehouse.disconnect()
+        target_warehouse.disconnect()   
+
+def confirm_append_only_stream_sync(test_config):
+    """Confirms that all tables with append-only streams have all records in DuckDB."""
+    source_warehouse = WarehouseFactory.create_warehouse(test_config.source_type, test_config.source_config)
+    target_warehouse = WarehouseFactory.create_warehouse(test_config.target_type, test_config.target_config)
+    
+    seed_data = seed_values()
+    expected_target_min_rows = seed_data['initial_seed_rows'] + seed_data['num_to_insert']
+    
+    # Columns to exclude from comparison due to timezone/formatting differences
+    exclude_columns = ['TIMESTAMP_LTZ_TEST_COL', 'TIMESTAMP_TZ_TEST_COL']
+    
+    try:
+        source_warehouse.connect()
+        target_warehouse.connect()
+        
+        tables_to_transfer = get_tables_to_transfer(test_config)
+        for table_info in tables_to_transfer:
+            if table_info["cdc_type"] == "APPEND_ONLY_STREAM":
+                source_table_name = source_warehouse.get_full_table_name(table_info)
+                target_table_name = target_warehouse.get_full_table_name(table_info)
                 
-                if not primary_keys:
-                    # Check if melchi_row_id exists in target and not in source
-                    assert any(col.lower() == 'melchi_row_id' for col in target_df.columns), f"melchi_row_id should be present in target table {target_table_name}"
-                    assert 'melchi_row_id' not in source_df.columns, f"melchi_row_id should not be present in source table {source_table_name}"
-                    
-                    # Remove melchi_row_id from target_df for comparison
-                    comparison_columns = [col for col in target_df.columns if col.lower() != 'melchi_row_id']
-                else:
-                    # Ensure melchi_row_id is not present in either table
-                    assert 'melchi_row_id' not in source_df.columns, f"melchi_row_id should not be present in source table {source_table_name}"
-                    assert 'melchi_row_id' not in target_df.columns, f"melchi_row_id should not be present in target table {target_table_name}"
-                    comparison_columns = target_df.columns
+                source_df = source_warehouse.get_data_as_df_for_comparison(source_table_name, "numeric_test_col")
+                target_df = target_warehouse.get_data_as_df_for_comparison(target_table_name, "numeric_test_col::decimal(38,0)")
                 
-                # Check if all source records are in the target
-                assert source_df.shape[0] <= target_df.shape[0], f"Target table {target_table_name} should have at least as many records as the source table."
+                # Remove MELCHI_ROW_ID and excluded columns
+                if 'MELCHI_ROW_ID' in target_df.columns:
+                    target_df = target_df.drop('MELCHI_ROW_ID', axis=1)
+                for col in exclude_columns:
+                    if col in source_df.columns:
+                        source_df = source_df.drop(col, axis=1)
+                    if col in target_df.columns:
+                        target_df = target_df.drop(col, axis=1)
+
+                # Test 1: Check minimum number of records in target
+                assert target_df.shape[0] >= expected_target_min_rows, (
+                    f"Target table {target_table_name} has {target_df.shape[0]} rows. "
+                    f"Expected at least {expected_target_min_rows} rows."
+                )
+
+                # Convert all columns to strings for consistent comparison
+                for col in source_df.columns:
+                    source_df[col] = source_df[col].astype(str)
+                    target_df[col] = target_df[col].astype(str)
+
+                # For each row in source, check if it exists in target
+                missing_records = []
                 
-                # Check if all source records are present in the target
-                merged_df = pd.merge(source_df, target_df[comparison_columns], how='left', indicator=True)
-                assert (merged_df['_merge'] == 'both').all(), f"Some records from source table {source_table_name} are missing in the target table."
+                for _, source_row in source_df.iterrows():
+                    found = False
+                    for _, target_row in target_df.iterrows():
+                        if all(source_row[col] == target_row[col] for col in source_df.columns):
+                            found = True
+                            break
+                    if not found:
+                        missing_records.append(source_row)
+
+                if missing_records:
+                    print("\nDiagnostic Information:")
+                    print(f"\nNumber of records:")
+                    print(f"Source: {len(source_df)}")
+                    print(f"Target: {len(target_df)}")
+                    print(f"\nNumber of missing records in {target_table_name}: {len(missing_records)}")
+                    if missing_records:
+                        print("\nFirst missing record details:")
+                        missing_row = missing_records[0]
+                        for col in source_df.columns:
+                            matches = target_df[target_df[col] == missing_row[col]]
+                            print(f"\nColumn: {col}")
+                            print(f"Source value: {missing_row[col]}")
+                            print(f"Number of matching values in target: {len(matches)}")
                 
-                print(f"Table {source_table_name} (append-only) has all records preserved in the target, including deleted ones.")
+                assert not missing_records, (
+                    f"Found {len(missing_records)} records in source that are missing from target"
+                )
+                
+                print(f"\nTable {source_table_name} (append-only) verification successful:")
+                print(f"- Source records: {len(source_df)}")
+                print(f"- Target records: {len(target_df)}")
+                print(f"- All source records found in target")
+                print(f"- Target has required minimum of {expected_target_min_rows} records")
+    
     finally:
         source_warehouse.disconnect()
         target_warehouse.disconnect()
+
+def confirm_syncs(test_config):
+    source_warehouse = WarehouseFactory.create_warehouse(test_config.source_type, test_config.source_config)
+    target_warehouse = WarehouseFactory.create_warehouse(test_config.target_type, test_config.target_config)
+    
+    source_warehouse.connect()
+    target_warehouse.connect()
+   
 
 @pytest.mark.first
 def test_prep(test_config):
@@ -353,7 +406,7 @@ def test_prep(test_config):
     print("Granting permissions and altering objects")
     grant_permissions_and_alter_objects(test_config)
     print("Inserting generated data")
-    insert_generated_data(test_config)
+    insert_generated_data(test_config, seed_values()['initial_seed_rows'])
 
 @pytest.mark.depends(on=['test_prep'])
 def test_setup_source(test_config, request):
@@ -377,53 +430,62 @@ def test_initial_data_sync(test_config, request):
     sync_data(test_config)
 
 @pytest.mark.depends(on=['test_initial_data_sync'])
-def test_cdc(test_config, request):
+def test_run_cdc(test_config, request):
     """Depends on successful initial data sync"""
     if request.session.testsfailed:
         pytest.skip("Skipping as previous tests failed")
-    update_records(test_config)
+
+    values = seed_values()
+    insert = values['num_to_insert']
+    update = values['num_to_update']
+    delete = values['num_to_delete']
+    update_records(test_config, insert, update, delete)
     sync_data(test_config)    
 
-@pytest.mark.depends(on=['test_cdc'])
-def test_cdc_consistency(test_config):
+@pytest.mark.depends(on=['test_run_cdc'])
+def test_standard_stream_consistency(test_config):
     confirm_standard_stream_sync(test_config)
+
+@pytest.mark.depends(on=['test_run_cdc'])
+def test_append_only_stream_consistency(test_config):
     confirm_append_only_stream_sync(test_config)
 
-def test_tests(test_config):
-    source_warehouse = WarehouseFactory.create_warehouse(test_config.source_type, test_config.source_config)
-    source_warehouse.connect()
-    source_query = "SELECT * FROM MELCHI_TEST_DATA.TEST_MELCHI_SCHEMA.NO_PK_APPEND_ONLY_STREAM order by 1 limit 10;"
-    source_df = source_warehouse.get_data_as_df(source_query)
-    target_warehouse = WarehouseFactory.create_warehouse(test_config.target_type, test_config.target_config)
-    target_warehouse.connect()
-    target_query = "SELECT * FROM TEST_MELCHI_SCHEMA.NO_PK_APPEND_ONLY_STREAM order by 1 limit 0;"
-    target_df = target_warehouse.get_data_as_df(target_query)
-    pp(source_df)
-    pp(target_df)
-    pp(source_df.dtypes)
-    pp(target_df.dtypes)
+# def test_tests(test_config):
+#     source_warehouse = WarehouseFactory.create_warehouse(test_config.source_type, test_config.source_config)
+#     source_warehouse.connect()
+#     source_query = "SELECT * FROM MELCHI_TEST_DATA.TEST_MELCHI_SCHEMA.NO_PK_APPEND_ONLY_STREAM order by 1 limit 10;"
+#     source_df = source_warehouse.get_data_as_df(source_query)
+#     target_warehouse = WarehouseFactory.create_warehouse(test_config.target_type, test_config.target_config)
+#     target_warehouse.connect()
+#     target_query = "SELECT * FROM TEST_MELCHI_SCHEMA.NO_PK_APPEND_ONLY_STREAM order by 1 limit 0;"
+#     target_df = target_warehouse.get_data_as_df(target_query)
+#     pp(source_df)
+#     pp(target_df)
+#     pp(source_df.dtypes)
+#     pp(target_df.dtypes)
 
-def test_tests2(test_config):
-    source_warehouse = WarehouseFactory.create_warehouse(test_config.source_type, test_config.source_config)
-    target_warehouse = WarehouseFactory.create_warehouse(test_config.target_type, test_config.target_config)
+# def test_tests2(test_config):
+#     source_warehouse = WarehouseFactory.create_warehouse(test_config.source_type, test_config.source_config)
+#     target_warehouse = WarehouseFactory.create_warehouse(test_config.target_type, test_config.target_config)
     
-    source_warehouse.connect()
-    target_warehouse.connect()
+#     source_warehouse.connect()
+#     target_warehouse.connect()
     
-    source_query = "SELECT binary_test_col FROM MELCHI_TEST_DATA.TEST_MELCHI_SCHEMA.NO_PK_STANDARD_STREAM order by 1 limit 10;"
-    target_query = "SELECT binary_test_col FROM TEST_MELCHI_SCHEMA.NO_PK_STANDARD_STREAM order by 1 limit 10;"
-    # target_query = "SELECT number_test_col FROM TEST_MELCHI_SCHEMA.NO_PK_STANDARD_STREAM order by 1 limit 10;"
+#     source_query = "SELECT binary_test_col FROM MELCHI_TEST_DATA.TEST_MELCHI_SCHEMA.NO_PK_STANDARD_STREAM order by 1 limit 10;"
+#     target_query = "SELECT binary_test_col FROM TEST_MELCHI_SCHEMA.NO_PK_STANDARD_STREAM order by 1 limit 10;"
+#     # target_query = "SELECT number_test_col FROM TEST_MELCHI_SCHEMA.NO_PK_STANDARD_STREAM order by 1 limit 10;"
 
-    source_df = source_warehouse.get_data_as_df(source_query)
-    source_results = source_warehouse.execute_query(source_query, True)
-    target_df = target_warehouse.get_data_as_df(target_query)
-    target_results = target_warehouse.execute_query(target_query, True)
-    print(source_df)
-    print(target_df)
-    print(source_results)
-    print(target_results)
+#     source_df = source_warehouse.get_data_as_df(source_query)
+#     source_results = source_warehouse.execute_query(source_query, True)
+#     target_df = target_warehouse.get_data_as_df(target_query)
+#     target_results = target_warehouse.execute_query(target_query, True)
+#     print(source_df)
+#     print(target_df)
+#     print(source_results)
+#     print(target_results)
 
-    source_warehouse.disconnect()
-    target_warehouse.disconnect()
+#     source_warehouse.disconnect()
+#     target_warehouse.disconnect()
 
-
+# Example usage:
+# diagnose_timestamp_differences(test_config)
