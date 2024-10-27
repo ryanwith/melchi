@@ -203,11 +203,31 @@ class TestSnowflakeWarehouse:
         with pytest.raises(Exception, match="No tables to transfer found"):
             snowflake_source_warehouse.setup_environment([])
 
-    def test_setup_environment_invalid_strategy(self, snowflake_source_warehouse):
+    def test_setup_environment_invalid_cdc_type(self, snowflake_source_warehouse):
         """Test invalid CDC strategy is caught"""
-        snowflake_source_warehouse.config["cdc_strategy"] = "invalid_strategy"
-        with pytest.raises(ValueError, match="Invalid or no cdc_strategy provided"):
-            snowflake_source_warehouse.setup_environment([{"database": "db", "schema": "sch", "table": "tbl"}])
+        invalid_cdc_type = {
+            "table": "table_name",
+            "schema": "schema_name",
+            "database": "db_name",
+            "cdc_type": "INVALID_CDC_TYPE"
+        }
+        tables = [invalid_cdc_type]
+        with pytest.raises(
+            ValueError,
+              match=f"Invalid cdc_type provided for {snowflake_source_warehouse.get_full_table_name(invalid_cdc_type)}: {invalid_cdc_type['cdc_type']}"):
+            snowflake_source_warehouse.setup_source_environment(tables)
+
+    def test_setup_evironment_no_cdc_type(self, snowflake_source_warehouse):
+        no_cdc_type = {
+            "table": "table_name",
+            "schema": "schema_name",
+            "database": "db_name",
+        }
+
+        tables = [no_cdc_type]
+        snowflake_source_warehouse.setup_source_environment(tables)
+
+
 
     @patch('snowflake.connector.connect')
     def test_create_cdc_objects_standard_cdc(self, mock_connect, snowflake_source_warehouse):

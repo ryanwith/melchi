@@ -115,7 +115,13 @@ class SnowflakeWarehouse(AbstractWarehouse):
             raise Exception("No tables to transfer found")
 
         for table_info in tables_to_transfer:
-            self.create_stream_objects(table_info)
+            cdc_type = table_info.get("cdc_type", "FULL_REFRESH").upper()
+            if cdc_type in ("STANDARD_STREAM", "APPEND_ONLY_STREAM"):
+                self.create_stream_objects(table_info)
+            elif cdc_type == "FULL_REFRESH":
+                pass
+            else:
+                raise ValueError(f"Invalid cdc_type provided for {self.get_full_table_name(table_info)}: {cdc_type}")
 
     def setup_target_environment(self):
         pass
