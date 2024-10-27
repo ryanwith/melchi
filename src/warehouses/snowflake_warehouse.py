@@ -221,15 +221,6 @@ class SnowflakeWarehouse(AbstractWarehouse):
         role = self.config['role']
         warehouse = self.config['warehouse']
 
-        header_comments = [
-            "-- IMPORTANT: These statements must be executed with appropriate roles that have:",
-            "-- * Permission to create/modify databases and schemas",
-            "-- * Permission to grant privileges",
-            "-- * Permission to modify objects in the target schemas",
-            "-- Multiple roles may be needed depending on your security model.",
-            "\n"
-        ]
-
         create_change_tracking_schema_statement = [
             "--This command creates the change tracking schema.  Not required if it already exists.",
             f"CREATE SCHEMA IF NOT EXISTS {self.get_change_tracking_schema_full_name()};",
