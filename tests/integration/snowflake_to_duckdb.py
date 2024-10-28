@@ -21,6 +21,7 @@ from tests.config.config import get_test_tables
 import os
 from dotenv import load_dotenv
 from pprint import pp
+from src.utils.table_config import get_cdc_type
 
 load_dotenv()
 
@@ -133,7 +134,7 @@ def create_source_tables(test_config):
         source_warehouse.execute_query(f"USE DATABASE {source_warehouse.config["database"]};")
 
         for table in test_tables:
-            csv_path = Path(__file__).parent.parent / table["schema_location"]
+            csv_path = Path(__file__).parent.parent.parent / table["schema_location"]
             type_mappings = pd.read_csv(csv_path)
             table_info = table["table_info"]
             table_name = source_warehouse.get_full_table_name
@@ -202,6 +203,93 @@ def insert_generated_data(test_config, rows = 5):
         # Disconnect warehouses
         source_warehouse.disconnect()
 
+# def confirm_append_only_stream_sync(test_config):
+#     """Confirms that all tables with append-only streams have all records in DuckDB."""
+#     source_warehouse = WarehouseFactory.create_warehouse(test_config.source_type, test_config.source_config)
+#     target_warehouse = WarehouseFactory.create_warehouse(test_config.target_type, test_config.target_config)
+    
+#     seed_data = seed_values()
+#     expected_target_min_rows = seed_data['initial_seed_rows'] + seed_data['num_to_insert']
+    
+#     # Columns to exclude from comparison due to timezone/formatting differences
+#     exclude_columns = ['TIMESTAMP_LTZ_TEST_COL', 'TIMESTAMP_TZ_TEST_COL']
+    
+#     try:
+#         source_warehouse.connect()
+#         target_warehouse.connect()
+        
+#         tables_to_transfer = get_tables_to_transfer(test_config)
+#         for table_info in tables_to_transfer:
+#             if table_info["cdc_type"] == "APPEND_ONLY_STREAM":
+#                 source_table_name = source_warehouse.get_full_table_name(table_info)
+#                 target_table_name = target_warehouse.get_full_table_name(table_info)
+                
+#                 source_df = source_warehouse.get_data_as_df_for_comparison(source_table_name, "numeric_test_col")
+#                 target_df = target_warehouse.get_data_as_df_for_comparison(target_table_name, "numeric_test_col::decimal(38,0)")
+                
+#                 # Remove MELCHI_ROW_ID and excluded columns
+#                 if 'MELCHI_ROW_ID' in target_df.columns:
+#                     target_df = target_df.drop('MELCHI_ROW_ID', axis=1)
+#                 for col in exclude_columns:
+#                     if col in source_df.columns:
+#                         source_df = source_df.drop(col, axis=1)
+#                     if col in target_df.columns:
+#                         target_df = target_df.drop(col, axis=1)
+
+#                 # Test 1: Check minimum number of records in target
+#                 assert target_df.shape[0] >= expected_target_min_rows, (
+#                     f"Target table {target_table_name} has {target_df.shape[0]} rows. "
+#                     f"Expected at least {expected_target_min_rows} rows."
+#                 )
+
+#                 # Convert all columns to strings for consistent comparison
+#                 for col in source_df.columns:
+#                     source_df[col] = source_df[col].astype(str)
+#                     target_df[col] = target_df[col].astype(str)
+
+#                 # For each row in source, check if it exists in target
+#                 missing_records = []
+                
+#                 for _, source_row in source_df.iterrows():
+#                     found = False
+#                     for _, target_row in target_df.iterrows():
+#                         if all(source_row[col] == target_row[col] for col in source_df.columns):
+#                             found = True
+#                             break
+#                     if not found:
+#                         missing_records.append(source_row)
+
+#                 if missing_records:
+#                     print("\nDiagnostic Information:")
+#                     print(f"\nNumber of records:")
+#                     print(f"Source: {len(source_df)}")
+#                     print(f"Target: {len(target_df)}")
+#                     print(f"\nNumber of missing records in {target_table_name}: {len(missing_records)}")
+#                     pp(source_df)
+#                     pp(target_df)
+#                     if missing_records:
+#                         print("\nFirst missing record details:")
+#                         missing_row = missing_records[0]
+#                         for col in source_df.columns:
+#                             matches = target_df[target_df[col] == missing_row[col]]
+#                             print(f"\nColumn: {col}")
+#                             print(f"Source value: {missing_row[col]}")
+#                             print(f"Number of matching values in target: {len(matches)}")
+                
+#                 assert not missing_records, (
+#                     f"Found {len(missing_records)} records in source table {source_warehouse.get_full_table_name(table_info)} using CDC type {source_warehouse.get_cdc_type(table_info)} that are missing from target"
+#                 )
+                
+#                 print(f"\nTable {source_table_name} (append-only) verification successful:")
+#                 print(f"- Source records: {len(source_df)}")
+#                 print(f"- Target records: {len(target_df)}")
+#                 print(f"- All source records found in target")
+#                 print(f"- Target has required minimum of {expected_target_min_rows} records")
+    
+#     finally:
+#         source_warehouse.disconnect()
+#         target_warehouse.disconnect()
+
 def update_records(test_config, num_to_insert = 5, num_to_update = 5, num_to_delete = 2):
     test_tables = get_test_tables()
     
@@ -212,32 +300,33 @@ def update_records(test_config, num_to_insert = 5, num_to_update = 5, num_to_del
         source_warehouse.connect()
         source_warehouse.execute_query(f"USE ROLE {source_warehouse.config["data_generation_role"]}")
         source_warehouse.begin_transaction()
-        queries_to_execute = []
+        
 
         for table in test_tables:
-
             table_info = table["table_info"]
             table_name = source_warehouse.get_full_table_name(table_info)
-            total_records = num_to_delete + num_to_update
-            random_records = source_warehouse.execute_query(get_random_records_sql(table_name, total_records), True)
-            
-            to_be_deleted = []
-            to_be_updated = []
-            fate = 0
-            for fate in range(total_records):
-                if fate < num_to_update:
-                    to_be_updated.append(random_records[fate][0])
-                else:
-                    to_be_deleted.append(random_records[fate][0])
-                    
-            delete_query = generate_delete_query(table_name, to_be_deleted, "$1")
-            update_query = generate_update_query(table_name, to_be_updated, "timestamp_ltz_test_col", "current_timestamp", "$1")
-            insert_queries = generate_insert_into_select_statements(table_name, generate_snowflake_data(num_to_insert))
-
-            queries_to_execute += insert_queries + [delete_query, update_query]
+            queries_to_execute = []
+            cdc_type = get_cdc_type(table_info)
+            queries_to_execute = generate_insert_into_select_statements(table_name, generate_snowflake_data(num_to_insert))
+            if cdc_type in ("STANDARD_STREAM", "FULL_REFRESH"):
+                total_records = num_to_delete + num_to_update
+                random_records = source_warehouse.execute_query(get_random_records_sql(table_name, total_records), True)
+                
+                to_be_deleted = []
+                to_be_updated = []
+                fate = 0
+                for fate in range(total_records):
+                    if fate < num_to_update:
+                        to_be_updated.append(random_records[fate][0])
+                    else:
+                        to_be_deleted.append(random_records[fate][0])
+                        
+                delete_query = generate_delete_query(table_name, to_be_deleted, "$1")
+                update_query = generate_update_query(table_name, to_be_updated, "timestamp_ltz_test_col", "current_timestamp", "$1")
+                queries_to_execute += [delete_query, update_query]
         
-        for query in queries_to_execute:
-            source_warehouse.execute_query(query)
+            for query in queries_to_execute:
+                source_warehouse.execute_query(query)
 
         source_warehouse.commit_transaction()
     except Exception as e:
@@ -249,7 +338,7 @@ def update_records(test_config, num_to_insert = 5, num_to_update = 5, num_to_del
         # Disconnect warehouses
         source_warehouse.disconnect()
 
-def confirm_standard_stream_sync(test_config):
+def confirm_full_sync(test_config):
     source_warehouse = WarehouseFactory.create_warehouse(test_config.source_type, test_config.source_config)
     target_warehouse = WarehouseFactory.create_warehouse(test_config.target_type, test_config.target_config)
     
@@ -259,7 +348,7 @@ def confirm_standard_stream_sync(test_config):
         
         tables_to_transfer = get_tables_to_transfer(test_config)
         for table_info in tables_to_transfer:
-            if table_info["cdc_type"] == "STANDARD_STREAM":
+            if get_cdc_type(table_info) in ("STANDARD_STREAM", "FULL_REFRESH"):
                 source_table_name = source_warehouse.get_full_table_name(table_info)
                 target_table_name = target_warehouse.get_full_table_name(table_info)
                 
@@ -361,6 +450,8 @@ def confirm_append_only_stream_sync(test_config):
                     print(f"Source: {len(source_df)}")
                     print(f"Target: {len(target_df)}")
                     print(f"\nNumber of missing records in {target_table_name}: {len(missing_records)}")
+                    pp(source_df)
+                    pp(target_df)
                     if missing_records:
                         print("\nFirst missing record details:")
                         missing_row = missing_records[0]
@@ -371,7 +462,7 @@ def confirm_append_only_stream_sync(test_config):
                             print(f"Number of matching values in target: {len(matches)}")
                 
                 assert not missing_records, (
-                    f"Found {len(missing_records)} records in source that are missing from target"
+                    f"Found {len(missing_records)} records in source table {source_warehouse.get_full_table_name(table_info)} using CDC type {get_cdc_type(table_info)} that are missing from target"
                 )
                 
                 print(f"\nTable {source_table_name} (append-only) verification successful:")
@@ -430,22 +521,30 @@ def test_initial_data_sync(test_config, request):
     sync_data(test_config)
 
 @pytest.mark.depends(on=['test_initial_data_sync'])
-def test_run_cdc(test_config, request):
-    """Depends on successful initial data sync"""
+def test_update_source_records(test_config, request):
     if request.session.testsfailed:
         pytest.skip("Skipping as previous tests failed")
-
     values = seed_values()
     insert = values['num_to_insert']
     update = values['num_to_update']
     delete = values['num_to_delete']
     update_records(test_config, insert, update, delete)
+    
+@pytest.mark.depends(on=['test_update_source_records'])
+def test_run_cdc(test_config, request):
+    """Depends on successful initial data sync"""
+    if request.session.testsfailed:
+        pytest.skip("Skipping as previous tests failed")
     sync_data(test_config)    
 
 @pytest.mark.depends(on=['test_run_cdc'])
-def test_standard_stream_consistency(test_config):
-    confirm_standard_stream_sync(test_config)
+def test_full_sync_consistency(test_config, request):
+    if request.session.testsfailed:
+        pytest.skip("Skipping as previous tests failed")
+    confirm_full_sync(test_config)
 
 @pytest.mark.depends(on=['test_run_cdc'])
-def test_append_only_stream_consistency(test_config):
+def test_append_only_stream_consistency(test_config, request):
+    if request.session.testsfailed:
+        pytest.skip("Skipping as previous tests failed")
     confirm_append_only_stream_sync(test_config)

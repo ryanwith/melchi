@@ -1,4 +1,6 @@
 database,schema,table,cdc_type
+melchi_test_data,test_melchi_schema,full_refresh_no_pk,FULL_REFRESH
+melchi_test_data,test_melchi_schema,full_refresh_one_pk,FULL_REFRESH
 melchi_test_data,test_melchi_schema,no_pk_standard_stream,STANDARD_STREAM
 melchi_test_data,test_melchi_schema,one_pk_standard_stream,STANDARD_STREAM
 melchi_test_data,test_melchi_schema,two_pk_standard_stream,STANDARD_STREAM

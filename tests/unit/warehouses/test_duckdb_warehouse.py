@@ -285,9 +285,9 @@ def test_create_table_with_default_values(warehouse):
 
 
 # Data Synchronization Tests
-def test_sync_table_operations(warehouse):
+def test_sync_table_standard_stream_operations_with_pk(warehouse):
     """Test the complete sync operation including temp table, deletes, inserts and cleanup."""
-    table_info = {'schema': 'test_schema', 'table': 'test_table'}
+    table_info = {'schema': 'test_schema', 'table': 'test_table', 'cdc_type': 'STANDARD_STREAM'}
     mock_df = Mock()
     
     schema_columns = [
@@ -314,8 +314,8 @@ def test_sync_table_operations(warehouse):
                         SELECT id, name FROM test_table_melchi_cdc
                         WHERE melchi_metadata_action = 'INSERT'
                     """.strip(),
-                    "UPDATE cdc_schema.captured_tables SET updated_at = current_timestamp WHERE table_name = 'test_table' and schema_name = 'test_schema' ",
-                    "DROP TABLE test_table_melchi_cdc"
+                    "DROP TABLE test_table_melchi_cdc",
+                    "UPDATE cdc_schema.captured_tables SET updated_at = current_timestamp WHERE table_name = 'test_table' and schema_name = 'test_schema' "
                 ]
                 
                 assert mock_execute.call_count == 5
@@ -326,9 +326,77 @@ def test_sync_table_operations(warehouse):
                     actual_sql = ' '.join(actual.split())
                     assert expected_sql == actual_sql
 
-def test_sync_table_without_primary_keys(warehouse):
+def test_sync_table_full_refresh(warehouse):
+    """Test the complete sync operation including temp table, deletes, inserts and cleanup."""
+    table_info = {'schema': 'test_schema', 'table': 'test_table', 'cdc_type': 'FULL_REFRESH'}
+    mock_df = Mock()
+    
+    schema_columns = [
+        {'name': 'id', 'type': 'INTEGER', 'nullable': False, 'default_value': None, 'primary_key': True},
+        {'name': 'name', 'type': 'VARCHAR', 'nullable': True, 'default_value': None, 'primary_key': False},
+    ]
+    
+    with patch.object(warehouse, 'get_schema', return_value=schema_columns):
+        with patch.object(warehouse, 'get_primary_keys', return_value=['id']):
+            with patch.object(warehouse.connection, 'execute') as mock_execute:
+                warehouse.sync_table(table_info, mock_df)
+                
+                expected_calls = [
+                    "TRUNCATE TABLE test_schema.test_table;",
+                    "INSERT INTO test_schema.test_table (SELECT * FROM df);"
+                ]
+                
+                actual_calls = [args[0] for args, kwargs in mock_execute.call_args_list]
+                for expected, actual in zip(expected_calls, actual_calls):
+                    expected_sql = ' '.join(expected.split())
+                    actual_sql = ' '.join(actual.split())
+                    assert expected_sql == actual_sql
+
+def test_sync_table_standard_stream_operations_with_two_pk(warehouse):
+    """Test the complete sync operation including temp table, deletes, inserts and cleanup."""
+    table_info = {'schema': 'test_schema', 'table': 'test_table', 'cdc_type': 'STANDARD_STREAM'}
+    mock_df = Mock()
+    
+    schema_columns = [
+        {'name': 'id', 'type': 'INTEGER', 'nullable': False, 'default_value': None, 'primary_key': True},
+        {'name': 'id2', 'type': 'INTEGER', 'nullable': False, 'default_value': None, 'primary_key': True},
+        {'name': 'name', 'type': 'VARCHAR', 'nullable': True, 'default_value': None, 'primary_key': False},
+    ]
+    
+    with patch.object(warehouse, 'get_schema', return_value=schema_columns):
+        with patch.object(warehouse, 'get_primary_keys', return_value=['id', 'id2']):
+            with patch.object(warehouse.connection, 'execute') as mock_execute:
+                warehouse.sync_table(table_info, mock_df)
+                
+                expected_calls = [
+                    f"CREATE OR REPLACE TEMP TABLE test_table_melchi_cdc AS (SELECT * FROM df)",
+                    """DELETE FROM test_schema.test_table
+                        WHERE (id, id2) IN 
+                        (
+                            SELECT (id, id2)
+                            FROM test_table_melchi_cdc
+                            WHERE melchi_metadata_action = 'DELETE'
+                        );
+                    """.strip(),
+                    """INSERT INTO test_schema.test_table
+                        SELECT id, id2, name FROM test_table_melchi_cdc
+                        WHERE melchi_metadata_action = 'INSERT'
+                    """.strip(),
+                    "DROP TABLE test_table_melchi_cdc",
+                    "UPDATE cdc_schema.captured_tables SET updated_at = current_timestamp WHERE table_name = 'test_table' and schema_name = 'test_schema' "
+                ]
+                
+                assert mock_execute.call_count == 5
+                actual_calls = [args[0] for args, kwargs in mock_execute.call_args_list]
+                
+                for expected, actual in zip(expected_calls, actual_calls):
+                    expected_sql = ' '.join(expected.split())
+                    actual_sql = ' '.join(actual.split())
+                    assert expected_sql == actual_sql
+
+def test_sync_table_standard_stream_without_pk(warehouse):
     """Test sync operation when table has no primary keys."""
-    table_info = {'schema': 'test_schema', 'table': 'test_table'}
+    table_info = {'schema': 'test_schema', 'table': 'test_table', 'cdc_type': 'STANDARD_STREAM'}
     mock_df = Mock()
     
     schema_columns = [
@@ -355,8 +423,8 @@ def test_sync_table_without_primary_keys(warehouse):
                         SELECT name, value FROM test_table_melchi_cdc
                         WHERE melchi_metadata_action = 'INSERT'
                     """.strip(),
+                    "DROP TABLE test_table_melchi_cdc",
                     "UPDATE cdc_schema.captured_tables SET updated_at = current_timestamp WHERE table_name = 'test_table' and schema_name = 'test_schema' ",
-                    "DROP TABLE test_table_melchi_cdc"
                 ]
                 
                 assert mock_execute.call_count == 5

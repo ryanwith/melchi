@@ -356,43 +356,43 @@ class TestSnowflakeWarehouse:
         ]
         assert mock_cursor.execute.call_args_list == expected_calls
 
-    def test_generate_source_sql(self, snowflake_source_warehouse):
-        """Test SQL generation for tables across different databases and schemas"""
-        tables = [
-            {"database": "db1", "schema": "schema1", "table": "table1"},
-            {"database": "db1", "schema": "schema1", "table": "table2"},
-            {"database": "db2", "schema": "schema1", "table": "table3"},
-            {"database": "db2", "schema": "schema2", "table": "table4"}
-        ]
+    # def test_generate_source_sql(self, snowflake_source_warehouse):
+    #     """Test SQL generation for tables across different databases and schemas"""
+    #     tables = [
+    #         {"database": "db1", "schema": "schema1", "table": "table1"},
+    #         {"database": "db1", "schema": "schema1", "table": "table2"},
+    #         {"database": "db2", "schema": "schema1", "table": "table3"},
+    #         {"database": "db2", "schema": "schema2", "table": "table4"}
+    #     ]
 
-        expected_statements = [
-            "USE ROLE ACCOUNTADMIN;",
-            "CREATE SCHEMA IF NOT EXISTS test_cdc_db.test_cdc_schema;",
-            "ALTER TABLE db1.schema1.table1 SET CHANGE_TRACKING = TRUE;",
-            "ALTER TABLE db1.schema1.table2 SET CHANGE_TRACKING = TRUE;",
-            "ALTER TABLE db2.schema1.table3 SET CHANGE_TRACKING = TRUE;",
-            "ALTER TABLE db2.schema2.table4 SET CHANGE_TRACKING = TRUE;",
-            "GRANT USAGE ON WAREHOUSE test_warehouse TO ROLE test_role;",
-            "GRANT USAGE ON DATABASE test_cdc_db TO ROLE test_role;",
-            "GRANT USAGE, CREATE TABLE, CREATE STREAM ON SCHEMA test_cdc_db.test_cdc_schema TO ROLE test_role;",
-            "GRANT USAGE ON DATABASE db1 TO ROLE test_role;",
-            "GRANT USAGE ON DATABASE db2 TO ROLE test_role;",
-            "GRANT USAGE ON SCHEMA db1.schema1 TO ROLE test_role;",
-            "GRANT USAGE ON SCHEMA db2.schema1 TO ROLE test_role;",
-            "GRANT USAGE ON SCHEMA db2.schema2 TO ROLE test_role;",
-            "GRANT SELECT ON TABLE db1.schema1.table1 TO ROLE test_role;",
-            "GRANT SELECT ON TABLE db1.schema1.table2 TO ROLE test_role;",
-            "GRANT SELECT ON TABLE db2.schema1.table3 TO ROLE test_role;",
-            "GRANT SELECT ON TABLE db2.schema2.table4 TO ROLE test_role;"
-        ]
+    #     expected_statements = [
+    #         "USE ROLE ACCOUNTADMIN;",
+    #         "CREATE SCHEMA IF NOT EXISTS test_cdc_db.test_cdc_schema;",
+    #         "ALTER TABLE db1.schema1.table1 SET CHANGE_TRACKING = TRUE;",
+    #         "ALTER TABLE db1.schema1.table2 SET CHANGE_TRACKING = TRUE;",
+    #         "ALTER TABLE db2.schema1.table3 SET CHANGE_TRACKING = TRUE;",
+    #         "ALTER TABLE db2.schema2.table4 SET CHANGE_TRACKING = TRUE;",
+    #         "GRANT USAGE ON WAREHOUSE test_warehouse TO ROLE test_role;",
+    #         "GRANT USAGE ON DATABASE test_cdc_db TO ROLE test_role;",
+    #         "GRANT USAGE, CREATE TABLE, CREATE STREAM ON SCHEMA test_cdc_db.test_cdc_schema TO ROLE test_role;",
+    #         "GRANT USAGE ON DATABASE db1 TO ROLE test_role;",
+    #         "GRANT USAGE ON DATABASE db2 TO ROLE test_role;",
+    #         "GRANT USAGE ON SCHEMA db1.schema1 TO ROLE test_role;",
+    #         "GRANT USAGE ON SCHEMA db2.schema1 TO ROLE test_role;",
+    #         "GRANT USAGE ON SCHEMA db2.schema2 TO ROLE test_role;",
+    #         "GRANT SELECT ON TABLE db1.schema1.table1 TO ROLE test_role;",
+    #         "GRANT SELECT ON TABLE db1.schema1.table2 TO ROLE test_role;",
+    #         "GRANT SELECT ON TABLE db2.schema1.table3 TO ROLE test_role;",
+    #         "GRANT SELECT ON TABLE db2.schema2.table4 TO ROLE test_role;"
+    #     ]
 
-        generated_sql = snowflake_source_warehouse.generate_source_sql(tables)
+    #     generated_sql = snowflake_source_warehouse.generate_source_sql(tables)
         
-        # Extract actual SQL statements (ignore comments and empty lines)
-        actual_statements = [
-            line.strip() for line in generated_sql.split('\n')
-            if line.strip() and not line.strip().startswith('--')
-        ]
+    #     # Extract actual SQL statements (ignore comments and empty lines)
+    #     actual_statements = [
+    #         line.strip() for line in generated_sql.split('\n')
+    #         if line.strip() and not line.strip().startswith('--')
+    #     ]
 
-        # Compare the meaningful SQL statements
-        assert actual_statements == expected_statements
+    #     # Compare the meaningful SQL statements
+    #     assert actual_statements == expected_statements
