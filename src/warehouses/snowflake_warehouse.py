@@ -197,13 +197,16 @@ class SnowflakeWarehouse(AbstractWarehouse):
         if return_results:
             return self.cursor.fetchall()
 
-    def get_data_as_df(self, query_text):
+    def get_data_as_df(self, query_text, batch_size = None):
         try:
             cursor = self.connection.cursor()
             cursor.execute(query_text)
             print("Query executed successfully")
             try:
-                df = cursor.fetch_pandas_all()
+                if batch_size == None:
+                    df = cursor.fetch_pandas_batches()
+                else:
+                    df = cursor.fetchmany(batch_size)
                 print(f"Data fetched as DataFrame. Shape: {df.shape}")
                 return df
             except Exception as e:
@@ -285,3 +288,6 @@ class SnowflakeWarehouse(AbstractWarehouse):
         df = df.astype(str)
         
         return df
+
+    def get_cdc_type(self, table_info):
+        return table_info.get("cdc_type", "FULL_REFRESH").upper()

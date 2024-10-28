@@ -345,5 +345,6 @@ class DuckDBWarehouse(AbstractWarehouse):
     def format_binary_for_comparison(self, value):
         return value.hex()
 
-
+    def get_cdc_type(self, table_info):
+        return table_info.get("cdc_type", "FULL_REFRESH").upper()
 
