@@ -85,7 +85,7 @@ For more detailed troubleshooting, please refer to our [documentation](link_to_d
 
 Melchi uses a YAML configuration file to manage connections and specify which tables to replicate. Follow these steps to set up your configuration:
 
-1. Create a `config.yaml` file in the project root directory.
+1. Create a `config.yaml` file in the config folder in the root directory.
 
 2. Add the following sections to your `config.yaml`:
 
@@ -99,7 +99,6 @@ Melchi uses a YAML configuration file to manage connections and specify which ta
      warehouse: snowflake_warehouse_to_use
      change_tracking_database: database_with_change_tracking_schema
      change_tracking_schema: name_of_change_tracking_schema
-     cdc_strategy: cdc_streams
 
    target:
      type: duckdb
@@ -107,18 +106,24 @@ Melchi uses a YAML configuration file to manage connections and specify which ta
      change_tracking_schema: name_of_change_tracking_schema
 
    tables_config:
-     path: "config/tables_to_transfer.csv"
+     path: "path/to/your/tables_to_transfer.csv"
    ```
 
    Replace placeholders with your actual Snowflake and DuckDB details.
 
-3. Create a `tables_to_transfer.csv` file in the `config` directory to specify which tables to replicate:
+3. Create a `tables_to_transfer.csv` (or other name you specify in the config) file in the `config` directory to specify which tables to replicate:
 
    ```csv
-   database,schema,table
-   your_db,your_schema,table1
-   your_db,your_schema,table2
+   database,schema,table,cdc_type
+   your_db,your_schema,table1,full_refresh
+   your_db,your_schema,table2,standard_stream
+   your_db,your_schema,table3,append_only_stream
    ```
+
+   The `cdc_type` column specifies how changes should be tracked for each table:
+   - `full_refresh`: Completely refreshes the table in DuckDB with each sync by dropping and recreating it.  This is the default if no cdc_type is specified.
+   - `standard_stream`: Uses Snowflake's standard streams to capture inserts, updates, and deletes.
+   - `append_only_stream`: Uses Snowflake's append-only streams for insert-only tables (more efficient for append-only data).
 
 4. Set up environment variables in a `.env` file:
 
@@ -129,7 +134,7 @@ Melchi uses a YAML configuration file to manage connections and specify which ta
    DUCKDB_DATABASE_PATH=/path/to/your/duckdb/database.db
    ```
 
-Ensure all configuration files are properly set up before running Melchi.
+Ensure all configuration files are properly set up before running Melchi.  Note.  If you do not have a duckdb database file, Melchi will create one at the path you specify.
 
 ## Permissions
 
@@ -260,88 +265,100 @@ By following these steps and best practices, you'll be able to efficiently manag
 
 ## How Melchi Works
 
-Melchi uses a combination of Snowflake's change tracking features and custom metadata tables to efficiently synchronize data from Snowflake to DuckDB. Here's a detailed explanation of the process:
+Melchi uses a combination of Snowflake's change tracking features and custom metadata tables to efficiently synchronize data from Snowflake to DuckDB. Here's a detailed explanation of how it works:
 
-### 1. Snowflake Setup
+### CDC Strategies
 
-When you run the `setup` command, Melchi performs the following actions in Snowflake:
+Melchi supports three different CDC (Change Data Capture) strategies that you can specify for each table in your `tables_to_transfer.csv` file:
 
-1. **Enables Change Tracking**: For each table specified in your `tables_to_transfer.csv`, Melchi enables change tracking:
+1. **Full Refresh** (`full_refresh`)
+   - Simplest strategy - drops and recreates the DuckDB table during each sync
+   - Best for:
+     - Initial testing and setup
+     - Small lookup tables
+     - When you want to avoid setting up change tracking in Snowflake
+   - Trade-off: Resource-intensive for large tables due to complete reload
+
+2. **Standard Stream** (`standard_stream`)
+   - Uses Snowflake's standard streams to capture all changes (inserts, updates, and deletes)
+   - Best for:
+     - Large tables where full refresh would be inefficient
+     - Data requiring complete change history (inserts, updates, deletes)
+     - Tables with frequent modifications
+   - Limitations:
+     - Cannot be used with tables containing geography or geometry columns
+     - Requires change tracking setup in Snowflake
+
+3. **Append-Only Stream** (`append_only_stream`)
+   - Uses Snowflake's append-only streams to capture only new records
+   - Best for:
+     - Log tables
+     - Event data
+     - Any table where records are only inserted, never updated or deleted
+   - Most efficient option for append-only data patterns
+
+### Setup Process
+
+#### 1. Snowflake Setup (for `standard_stream` and `append_only_stream` tables)
+
+When you run the `setup` command, Melchi creates three components in Snowflake for each table:
+
+1. **Change Tracking**: Enables change tracking on the source table
    ```sql
    ALTER TABLE your_db.your_schema.your_table SET CHANGE_TRACKING = TRUE;
    ```
 
-2. **Creates Streams**: Melchi creates a stream for each table to capture changes:
+2. **Stream**: Creates a stream to capture changes
    ```sql
    CREATE STREAM your_db.change_tracking_schema.stream_your_table ON TABLE your_db.your_schema.your_table;
    ```
-   The stream name follows the pattern: `change_tracking_schema.stream_[database]$[schema]$[table]`
 
-3. **Creates Processing Tables**: For each stream, Melchi creates a processing table to store captured changes:
+3. **Processing Table**: Creates a staging area for captured changes
    ```sql
    CREATE TABLE your_db.change_tracking_schema.stream_your_table_processing LIKE your_db.your_schema.your_table;
    ```
-   Additional metadata columns are added to track the type of change (INSERT, UPDATE, DELETE).
 
-### 2. DuckDB Setup
+#### 2. DuckDB Setup
 
-In DuckDB, Melchi sets up the following:
+For all CDC strategies, Melchi:
+1. Creates tables that mirror your Snowflake schema
+2. Sets up metadata tables to track synchronization status
+3. For tables without primary keys, adds a `melchi_row_id` column to uniquely identify rows
 
-1. **Replicated Tables**: Creates tables that mirror the structure of the Snowflake tables.
+### Synchronization Process
 
-2. **Metadata Table**: Creates a table to track the last synchronization time for each replicated table.
+When you run `sync_data`, Melchi handles each table according to its CDC strategy:
 
-### 3. Data Synchronization Process
+#### For `full_refresh` Tables:
+- Drops and recreates the table with fresh data from Snowflake
+- Updates synchronization metadata
 
-When you run the `sync_data` command:
+#### For `standard_stream` and `append_only_stream` Tables:
+1. Captures changes from Snowflake streams into processing tables
+2. Converts changes to pandas DataFrames for processing
+3. Applies changes to DuckDB:
+   - `standard_stream`: Handles inserts, updates, and deletes
+   - `append_only_stream`: Handles only inserts
+4. Updates synchronization metadata
+5. Cleans up processing tables
 
-1. **Capture Changes**: Melchi queries the Snowflake streams to capture changes since the last synchronization:
-   ```sql
-   INSERT INTO stream_your_table_processing 
-   SELECT *, METADATA$ACTION, METADATA$ISUPDATE, METADATA$ROW_ID 
-   FROM stream_your_table;
-   ```
+### Implementation Details
 
-2. **Fetch Changes**: The changes are fetched from the processing tables and converted into pandas DataFrames.
-
-3. **Apply Changes**: Melchi applies the changes to the corresponding tables in DuckDB:
-   - For INSERTs and UPDATEs, it uses an UPSERT operation (INSERT ... ON CONFLICT DO UPDATE).
-   - For DELETEs, it removes the corresponding rows from the DuckDB table.
-
-4. **Update Metadata**: After successful synchronization, Melchi updates the metadata table in DuckDB with the latest synchronization time.
-
-5. **Cleanup**: The processing table in Snowflake is truncated to prepare for the next synchronization cycle.
-
-### Use of DataFrames
-
-Melchi uses pandas DataFrames as an intermediate representation of the data for several reasons:
-
-1. **Efficient Data Manipulation**: DataFrames provide powerful tools for data transformation and filtering.
-2. **Type Handling**: They help in managing data type conversions between Snowflake and DuckDB.
-3. **Batch Processing**: Large datasets can be efficiently processed in batches using DataFrames.
-
-### Naming Conventions
-
+#### Naming Conventions
 - Snowflake streams: `change_tracking_schema.stream_[database]$[schema]$[table]`
 - Snowflake processing tables: `change_tracking_schema.stream_[database]$[schema]$[table]_processing`
 - DuckDB tables: Mirror the original Snowflake table names
 
-Understanding these internals can help you:
-- Troubleshoot synchronization issues
-- Optimize your Melchi setup for large-scale data transfers
-- Extend Melchi's functionality for custom use cases
+#### Key Features
+- All CDC strategies provide accurate data as of their last sync time
+- Tables without primary keys automatically get a `melchi_row_id` column added
+- Uses Snowflake's native change tracking capabilities for efficient syncing
+- Supports mixing different CDC strategies across tables based on your needs
 
-By leveraging Snowflake's native change tracking and stream features, combined with efficient data processing using pandas, Melchi provides a robust and scalable solution for keeping your DuckDB instance in sync with Snowflake.
-
-### Limitations
-
-Melchi currently does not support the following:
-
-- Geography and Geometry columns.  Those are not supported by standard Snowflake streams.
-- Append-only streams.
-- Specifying primary keys.  It relies on primary keys set on the table in Snowflake or Snowflake autogenerated row IDs if one are set.
-- Modifying tables to transfer without replacing all of them.
-- 
+#### Current Limitations
+- Geography and Geometry columns not supported with `standard_stream`
+- Primary keys must be defined in Snowflake (or a `melchi_row_id` will be added)
+- All tables must be replaced together when modifying the transfer configuration
 
 ## Contributing
 
