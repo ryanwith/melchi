@@ -115,14 +115,14 @@ class SnowflakeWarehouse(AbstractWarehouse):
         if tables_to_transfer == []:
             raise Exception("No tables to transfer found")
 
+        problems = self.find_problems(tables_to_transfer)
+        if problems:
+            raise ValueError(f"The following problems were found:\n{'\n'.join(problems)}")
+
         for table_info in tables_to_transfer:
             cdc_type = table_info.get("cdc_type", "FULL_REFRESH").upper()
             if cdc_type in ("STANDARD_STREAM", "APPEND_ONLY_STREAM"):
                 self.create_stream_objects(table_info)
-            elif cdc_type == "FULL_REFRESH":
-                pass
-            else:
-                raise ValueError(f"Invalid cdc_type provided for {self.get_full_table_name(table_info)}: {cdc_type}")
 
     def setup_target_environment(self):
         pass
@@ -314,3 +314,20 @@ class SnowflakeWarehouse(AbstractWarehouse):
         except Exception as e:
             print(f"Error setting timezone: {str(e)}")
             raise
+
+    def find_problems(self, tables_to_transfer):
+        problems = []
+        for table_info in tables_to_transfer:
+            if self.has_geometry_or_geography_column(self.get_schema(table_info)):
+                problems.append(f"{self.get_full_table_name(table_info)} has a geometry or geography column.  Snowflake does not support these in standard streams.  Use append_only_streams or full_refresh for tables with these columns.")
+            try:
+                get_cdc_type(table_info)
+            except ValueError as e:
+                problems.append(f"{self.get_full_table_name(table_info)} has an invalid cdc_type: {table_info['cdc_type']}.  Valid values are append_only_stream, standard_stream, and full_refresh.")
+        return problems
+
+    def has_geometry_or_geography_column(self, schema):
+        for col in schema:
+            if col["type"] in ("GEOMETRY", "GEOGRAPHY"):
+                return True
+        return False

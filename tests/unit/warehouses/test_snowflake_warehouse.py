@@ -203,31 +203,63 @@ class TestSnowflakeWarehouse:
         with pytest.raises(Exception, match="No tables to transfer found"):
             snowflake_source_warehouse.setup_environment([])
 
-    def test_setup_environment_invalid_cdc_type(self, snowflake_source_warehouse):
-        """Test invalid CDC strategy is caught"""
-        invalid_cdc_type = {
-            "table": "table_name",
-            "schema": "schema_name",
-            "database": "db_name",
-            "cdc_type": "INVALID_CDC_TYPE"
-        }
-        tables = [invalid_cdc_type]
-        with pytest.raises(
-            ValueError,
-              match=f"Invalid cdc_type provided for {snowflake_source_warehouse.get_full_table_name(invalid_cdc_type)}: {invalid_cdc_type['cdc_type']}"):
+    @patch('snowflake.connector.connect')
+    def test_setup_environment_invalid_cdc_type(self, mock_connect, snowflake_source_warehouse):
+        """Test invalid CDC strategies are caught"""
+        mock_connection = Mock()
+        mock_cursor = Mock()
+        mock_connect.return_value = mock_connection
+        mock_connection.cursor.return_value = mock_cursor
+
+        # Set up different schema responses based on table name
+        def mock_fetchall_response():
+            # Get the most recent execute call's arguments
+            last_query = mock_cursor.execute.call_args[0][0]
+            if "invalid_cdc_table_invalid_columns" in last_query or "invalid_columns_only" in last_query:
+                return [["col1", "GEOMETRY", "", "Y", None, "N"]]
+            return [["col1", "VARCHAR", "", "Y", None, "N"]]
+        
+        mock_cursor.fetchall.side_effect = mock_fetchall_response
+
+        # Connect and prepare test data
+        snowflake_source_warehouse.connect()
+        tables = [
+            {
+                "table": "invalid_cdc_table",
+                "schema": "schema_name",
+                "database": "db_name",
+                "cdc_type": "INVALID_CDC_TYPE"
+            },
+            {
+                "table": "invalid_cdc_table_invalid_columns",
+                "schema": "schema_name",
+                "database": "db_name",
+                "cdc_type": "SECOND_INVALID_CDC_TYPE"
+            },
+            {
+                "table": "invalid_columns_only",
+                "schema": "schema_name",
+                "database": "db_name",
+                "cdc_type": "FULL_REFRESH"
+            },
+            {
+                "table": "all_good",
+                "schema": "schema_name",
+                "database": "db_name",
+                "cdc_type": "FULL_REFRESH"
+            },
+        ]
+
+        expected_error_message = "\n".join((
+            "The following problems were found:",
+            "db_name.schema_name.invalid_cdc_table has an invalid cdc_type: INVALID_CDC_TYPE.  Valid values are append_only_stream, standard_stream, and full_refresh.",
+            "db_name.schema_name.invalid_cdc_table_invalid_columns has a geometry or geography column.  Snowflake does not support these in standard streams.  Use append_only_streams or full_refresh for tables with these columns.",
+            "db_name.schema_name.invalid_cdc_table_invalid_columns has an invalid cdc_type: SECOND_INVALID_CDC_TYPE.  Valid values are append_only_stream, standard_stream, and full_refresh.",   
+            "db_name.schema_name.invalid_columns_only has a geometry or geography column.  Snowflake does not support these in standard streams.  Use append_only_streams or full_refresh for tables with these columns."
+        ))
+
+        with pytest.raises(ValueError, match=expected_error_message):
             snowflake_source_warehouse.setup_source_environment(tables)
-
-    def test_setup_evironment_no_cdc_type(self, snowflake_source_warehouse):
-        no_cdc_type = {
-            "table": "table_name",
-            "schema": "schema_name",
-            "database": "db_name",
-        }
-
-        tables = [no_cdc_type]
-        snowflake_source_warehouse.setup_source_environment(tables)
-
-
 
     @patch('snowflake.connector.connect')
     def test_create_cdc_objects_standard_cdc(self, mock_connect, snowflake_source_warehouse):
