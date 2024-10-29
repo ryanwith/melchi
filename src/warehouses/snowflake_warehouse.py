@@ -234,22 +234,6 @@ class SnowflakeWarehouse(AbstractWarehouse):
         except Exception as e:
             print(f"Error executing query: {str(e)}")
             raise
-    
-    # def get_data_as_df(self, query_text):
-    #     try:
-    #         cursor = self.connection.cursor()
-    #         cursor.execute(query_text)
-    #         print("Query executed successfully")
-    #         try:
-    #             df = cursor.fetch_pandas_all()
-    #             print(f"Data fetched as DataFrame. Shape: {df.shape}")
-    #             return df
-    #         except Exception as e:
-    #             print(f"Error fetching as DataFrame: {str(e)}")
-    #             raise
-    #     except Exception as e:
-    #         print(f"Error executing query: {str(e)}")
-    #         raise
 
     def get_primary_keys(self, table_info):
         schema = self.get_schema(table_info)
