@@ -45,7 +45,7 @@ def test_valid_cdc_types(tmp_path, mock_config):
         assert len(result) == 7
         assert result[0] == {'database': 'db1', 'schema': 'sch1', 'table': 'tbl1', 'cdc_type': 'APPEND_ONLY_STREAM'}
         assert result[1] == {'database': 'db2', 'schema': 'sch2', 'table': 'tbl2', 'cdc_type': 'STANDARD_STREAM'}
-        assert result[2] == {'database': 'db3', 'schema': 'sch3', 'table': 'tbl3', 'cdc_type': 'STANDARD_STREAM'}
+        assert result[2] == {'database': 'db3', 'schema': 'sch3', 'table': 'tbl3', 'cdc_type': 'FULL_REFRESH'}
         assert result[3] == {'database': 'db4', 'schema': 'sch4', 'table': 'tbl4', 'cdc_type': 'APPEND_ONLY_STREAM'}
         assert result[4] == {'database': 'db5', 'schema': 'sch5', 'table': 'tbl5', 'cdc_type': 'STANDARD_STREAM'}
         assert result[5] == {'database': 'db6', 'schema': 'sch6', 'table': 'tbl6', 'cdc_type': 'FULL_REFRESH'}

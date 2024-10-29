@@ -20,12 +20,12 @@ def transfer_schema(config, tables=None):
                 table_info = {
                     "database": table["database"],
                     "schema": table["schema"],
-                    "table": table["table"]
+                    "table": table["table"],
+                    "cdc_type": table.get("cdc_type", None)
                 }
-                cdc_type = table["cdc_type"]
                 source_schema = source_warehouse.get_schema(table_info)
                 target_schema = source_warehouse.map_schema_to(table_info, config.target_type)
-                target_warehouse.create_table(table_info, source_schema, target_schema, cdc_type)
+                target_warehouse.create_table(table_info, source_schema, target_schema)
             target_warehouse.commit_transaction()
         except Exception as e:
             target_warehouse.rollback_transaction()

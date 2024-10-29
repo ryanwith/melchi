@@ -3,6 +3,7 @@
 import snowflake.connector
 import pandas as pd
 from .abstract_warehouse import AbstractWarehouse
+from ..utils.table_config import get_cdc_type
 import re
 
 
@@ -69,7 +70,7 @@ class SnowflakeWarehouse(AbstractWarehouse):
             schema.append(self.format_schema_row(row))
         return schema
 
-    def create_table(self, table_info, source_schema, target_schema, cdc_type):
+    def create_table(self, table_info, source_schema, target_schema):
         # Implementation for creating a table in Snowflake
         pass
 
@@ -174,20 +175,38 @@ class SnowflakeWarehouse(AbstractWarehouse):
 
     def cleanup_source(self, table_info):
         """Removes processed records from the stream processing table."""
-        stream_processing_table_name = self.get_stream_processing_table_name(table_info)
-        self.cursor.execute(f"TRUNCATE TABLE {stream_processing_table_name}")    
+        if get_cdc_type(table_info) in ("APPEND_ONLY_STREAM", "STANDARD_STREAM"):
+            stream_processing_table_name = self.get_stream_processing_table_name(table_info)
+            try:
+                self.cursor.execute(f"TRUNCATE TABLE {stream_processing_table_name}")
+            except Exception as e:
+                # Check for table not found error - Snowflake error code 002003
+                if "002003" in str(e) or "does not exist" in str(e).lower():
+                    table_name = self.get_full_table_name(table_info)
+                    raise Exception(
+                        f"Stream processing table not found for {table_name}. "
+                        f"This typically means the initial setup was not completed. "
+                        f"Please run 'python main.py setup' to set up change tracking for this table."
+                    ) from None
+                else:
+                    # Re-raise any other exceptions
+                    raise
 
-    def get_cdc_data(self, table_info):
+    def get_updates(self, table_info):
         """
         Retrieves CDC data from stream table and returns changes.
         Advances the stream offset and returns changes as a DataFrame.
         """
-        stream_processing_table_name = self.get_stream_processing_table_name(table_info)
-        stream_name = self.get_stream_name(table_info)
-        self.cursor.execute(f"INSERT INTO {stream_processing_table_name} SELECT * FROM {stream_name};")
-        changes = self.get_data_as_df(f"SELECT * FROM {stream_processing_table_name}")
-        changes.rename(columns={"METADATA$ROW_ID": "MELCHI_ROW_ID", "METADATA$ACTION": "MELCHI_METADATA_ACTION"}, inplace=True)
-        return changes
+        cdc_type = get_cdc_type(table_info)
+        if cdc_type in ("APPEND_ONLY_STREAM", "STANDARD_STREAM"):
+            stream_processing_table_name = self.get_stream_processing_table_name(table_info)
+            stream_name = self.get_stream_name(table_info)
+            self.cursor.execute(f"INSERT INTO {stream_processing_table_name} SELECT * FROM {stream_name};")
+            changes = self.get_data_as_df(f"SELECT * FROM {stream_processing_table_name}")
+            changes.rename(columns={"METADATA$ROW_ID": "MELCHI_ROW_ID", "METADATA$ACTION": "MELCHI_METADATA_ACTION"}, inplace=True)
+            return changes
+        elif cdc_type == "FULL_REFRESH":
+            return self.get_data_as_df(f"SELECT * FROM {self.get_full_table_name(table_info)}")
 
     # UTILITY METHODS
     
@@ -204,9 +223,9 @@ class SnowflakeWarehouse(AbstractWarehouse):
             print("Query executed successfully")
             try:
                 if batch_size == None:
-                    df = cursor.fetch_pandas_batches()
+                    df = cursor.fetch_pandas_all()
                 else:
-                    df = cursor.fetchmany(batch_size)
+                    df = cursor.fetch_pandas_batches(batch_size)
                 print(f"Data fetched as DataFrame. Shape: {df.shape}")
                 return df
             except Exception as e:
@@ -216,6 +235,22 @@ class SnowflakeWarehouse(AbstractWarehouse):
             print(f"Error executing query: {str(e)}")
             raise
     
+    # def get_data_as_df(self, query_text):
+    #     try:
+    #         cursor = self.connection.cursor()
+    #         cursor.execute(query_text)
+    #         print("Query executed successfully")
+    #         try:
+    #             df = cursor.fetch_pandas_all()
+    #             print(f"Data fetched as DataFrame. Shape: {df.shape}")
+    #             return df
+    #         except Exception as e:
+    #             print(f"Error fetching as DataFrame: {str(e)}")
+    #             raise
+    #     except Exception as e:
+    #         print(f"Error executing query: {str(e)}")
+    #         raise
+
     def get_primary_keys(self, table_info):
         schema = self.get_schema(table_info)
         return sorted([col['name'] for col in schema if col['primary_key']])
@@ -289,5 +324,9 @@ class SnowflakeWarehouse(AbstractWarehouse):
         
         return df
 
-    def get_cdc_type(self, table_info):
-        return table_info.get("cdc_type", "FULL_REFRESH").upper()
+    def set_timezone(self, tz):
+        try:
+            self.cursor.execute(f"ALTER SESSION SET TIMEZONE = '{tz}';")
+        except Exception as e:
+            print(f"Error setting timezone: {str(e)}")
+            raise

@@ -19,16 +19,16 @@ def get_tables_to_transfer(config):
             i = 1
             for row in reader:
                 # Handle both None and empty string cases
-                raw_cdc_type = row.get("cdc_type", "STANDARD_STREAM")
+                raw_cdc_type = row.get("cdc_type", "FULL_REFRESH")
                 database = row['database']
                 schema = row['schema']
                 table = row['table']
                 if any(not val for val in (database, schema, table)):
                     raise ValueError(f"You are missing a database, schema, or table name in row {i}.")
-                cdc_type = raw_cdc_type.strip().upper() if raw_cdc_type else "STANDARD_STREAM"
+                cdc_type = raw_cdc_type.strip().upper() if raw_cdc_type else "FULL_REFRESH"
 
-                if cdc_type not in ("STANDARD_STREAM", "APPEND_ONLY_STREAM"):   
-                    raise ValueError(f"{cdc_type} is not a valid CDC type.  Please provide STANDARD_STREAM, APPEND_ONLY_STREAM, or leave it blank to default to STANDARD_STREAM.")
+                if cdc_type not in ("STANDARD_STREAM", "APPEND_ONLY_STREAM", "FULL_REFRESH"):   
+                    raise ValueError(f"{cdc_type} is not a valid CDC type.  Please provide FULL_REFRESH, STANDARD_STREAM, or APPEND_ONLY_STREAM, or leave it blank to default to FULL_REFRESH.")
 
                 tables.append({
                     'database': database,
@@ -47,3 +47,9 @@ def get_tables_to_transfer(config):
         raise csv.Error(f"Error reading CSV file: {e}")
     
     return tables
+
+def get_cdc_type(table_info):
+    cdc_type = table_info.get("cdc_type", "FULL_REFRESH").upper()
+    if cdc_type not in ("FULL_REFRESH", "STANDARD_STREAM", "APPEND_ONLY_STREAM"):
+        raise ValueError(f"{cdc_type} is not a valid CDC type.  Please provide FULL_REFRESH, STANDARD_STREAM, or APPEND_ONLY_STREAM, or leave it blank to default to FULL_REFRESH.")
+    return cdc_type

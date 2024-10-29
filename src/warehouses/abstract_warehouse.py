@@ -56,7 +56,7 @@ class AbstractWarehouse(ABC):
         # updates the table table_info in the target warehouse with metadata
         # updates the table source_columns in the target warehouse with the table's schema int he source warehouse
     @abstractmethod
-    def create_table(self, table_info, source_schema, target_schema, cdc_type):
+    def create_table(self, table_info, source_schema, target_schema):
         pass
 
     # gets a table name in a way that can be queried
@@ -133,7 +133,8 @@ class AbstractWarehouse(ABC):
 
     def warehouse_type(self):
         return self.config["type"].upper()
-
+    
+    @abstractmethod
     def get_primary_keys(self, table_info):
         pass
 
@@ -141,5 +142,19 @@ class AbstractWarehouse(ABC):
     def get_data_as_df_for_comparison(self, table_name, order_by_column = None):
         """
         Retrieves data as a DataFrame, with adjustments for consistent comparison across different warehouse types.
+        """
+        pass
+
+    @abstractmethod
+    def get_data_as_df(self, query_text):
+        """
+        Gets all data from a table as a DataFrame.
+        Used for full refresh operations.
+        """
+        pass
+    @abstractmethod
+    def set_timezone(self, tz):
+        """
+        Sets the timezone for the warehouse
         """
         pass

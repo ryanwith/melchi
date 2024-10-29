@@ -291,7 +291,7 @@ def insert_generated_data(test_config, rows = 5):
 #         target_warehouse.disconnect()
 
 def update_records(test_config, num_to_insert = 5, num_to_update = 5, num_to_delete = 2):
-    test_tables = get_test_tables()
+    test_tables = get_tables_to_transfer(test_config)
     
     # Create source and target warehouse connections
     source_warehouse = WarehouseFactory.create_warehouse(test_config.source_type, test_config.source_config)
@@ -302,13 +302,13 @@ def update_records(test_config, num_to_insert = 5, num_to_update = 5, num_to_del
         source_warehouse.begin_transaction()
         
 
-        for table in test_tables:
-            table_info = table["table_info"]
+        for table_info in test_tables:
             table_name = source_warehouse.get_full_table_name(table_info)
             queries_to_execute = []
             cdc_type = get_cdc_type(table_info)
             queries_to_execute = generate_insert_into_select_statements(table_name, generate_snowflake_data(num_to_insert))
             if cdc_type in ("STANDARD_STREAM", "FULL_REFRESH"):
+                print(f"table_name: {table_name} cdc_type: {cdc_type}")
                 total_records = num_to_delete + num_to_update
                 random_records = source_warehouse.execute_query(get_random_records_sql(table_name, total_records), True)
                 
@@ -341,10 +341,12 @@ def update_records(test_config, num_to_insert = 5, num_to_update = 5, num_to_del
 def confirm_full_sync(test_config):
     source_warehouse = WarehouseFactory.create_warehouse(test_config.source_type, test_config.source_config)
     target_warehouse = WarehouseFactory.create_warehouse(test_config.target_type, test_config.target_config)
-    
+    timezone = "America/Los_Angeles"
     try:
         source_warehouse.connect()
         target_warehouse.connect()
+        source_warehouse.set_timezone(timezone)
+        target_warehouse.set_timezone(timezone)
         
         tables_to_transfer = get_tables_to_transfer(test_config)
         for table_info in tables_to_transfer:
@@ -371,9 +373,9 @@ def confirm_full_sync(test_config):
                             mismatching_columns.append(column)
                             print(f"Mismatch in column {column}:")
                             print("Source (first 5 rows):")
-                            print(source_df[column].head())
+                            print(source_df[column])
                             print("Target (first 5 rows):")
-                            print(target_df[column].head())
+                            print(target_df[column])
                             print("\n")
                     else:
                         print(f"Column {column} is missing in the target DataFrame")
@@ -521,6 +523,13 @@ def test_initial_data_sync(test_config, request):
     sync_data(test_config)
 
 @pytest.mark.depends(on=['test_initial_data_sync'])
+def test_run_cdc_no_changes(test_config, request):
+    """Depends on successful initial data sync"""
+    if request.session.testsfailed:
+        pytest.skip("Skipping as previous tests failed")
+    sync_data(test_config)  
+
+@pytest.mark.depends(on=['test_run_cdc_no_changes'])
 def test_update_source_records(test_config, request):
     if request.session.testsfailed:
         pytest.skip("Skipping as previous tests failed")
@@ -531,19 +540,19 @@ def test_update_source_records(test_config, request):
     update_records(test_config, insert, update, delete)
     
 @pytest.mark.depends(on=['test_update_source_records'])
-def test_run_cdc(test_config, request):
+def test_run_cdc_with_changes(test_config, request):
     """Depends on successful initial data sync"""
     if request.session.testsfailed:
         pytest.skip("Skipping as previous tests failed")
     sync_data(test_config)    
 
-@pytest.mark.depends(on=['test_run_cdc'])
+@pytest.mark.depends(on=['test_run_cdc_with_changes'])
 def test_full_sync_consistency(test_config, request):
     if request.session.testsfailed:
         pytest.skip("Skipping as previous tests failed")
     confirm_full_sync(test_config)
 
-@pytest.mark.depends(on=['test_run_cdc'])
+@pytest.mark.depends(on=['test_run_cdc_with_changes'])
 def test_append_only_stream_consistency(test_config, request):
     if request.session.testsfailed:
         pytest.skip("Skipping as previous tests failed")
