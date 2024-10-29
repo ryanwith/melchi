@@ -6,6 +6,8 @@ import pandas as pd
 from .abstract_warehouse import AbstractWarehouse
 from decimal import Decimal
 from ..utils.table_config import get_cdc_type
+from pprint import pp
+from .type_mappings import TypeMapper
 
 class DuckDBWarehouse(AbstractWarehouse):
     """
@@ -23,6 +25,11 @@ class DuckDBWarehouse(AbstractWarehouse):
     def connect(self):
         """Creates a connection to a DuckDB database allowing you to query it."""
         self.connection = duckdb.connect(self.config['database'])
+
+        # install and load spatial extension
+        # doing this everytime rather than checking it it's installed/needed since there's minimal overhead
+        self.connection.execute("INSTALL spatial;")
+        self.connection.execute("LOAD spatial;")
 
     def disconnect(self):
         if self.connection:
@@ -203,14 +210,15 @@ class DuckDBWarehouse(AbstractWarehouse):
 
         full_table_name = self.get_full_table_name(table_info)
         cdc_type = get_cdc_type(table_info)
-        df_rows = df.shape[0]
+        processed_df = TypeMapper.process_df_snowflake_to_duckdb(df)
+        df_rows = processed_df.shape[0]
         if df_rows == 0:
             print(f"No records to ingest for {full_table_name}")
         elif cdc_type in ("APPEND_ONLY_STREAM", "STANDARD_STREAM"):
             temp_table_name = table_info["table"] + "_melchi_cdc"
 
             # somehow this grabs the dataframe but i am not sure how
-            self.connection.execute(f"CREATE OR REPLACE TEMP TABLE {temp_table_name} AS (SELECT * FROM df);") 
+            self.connection.execute(f"CREATE OR REPLACE TEMP TABLE {temp_table_name} AS (SELECT * FROM processed_df);") 
 
             # format oclumns for insert statements
             columns_to_insert = []
@@ -247,10 +255,15 @@ class DuckDBWarehouse(AbstractWarehouse):
         elif cdc_type == "FULL_REFRESH":
             queries = [
                 f"TRUNCATE TABLE {full_table_name};",
-                f"INSERT INTO {full_table_name} (SELECT * FROM df);"
+                f"INSERT INTO {full_table_name} (SELECT * FROM processed_df);"
             ]
             for query in queries:
-                self.connection.execute(query)
+                try:                
+                    self.connection.execute(query)
+                except Exception as e:
+                    print(f"Error executing query: {query}")
+                    print(f"Error details: {str(e)}")
+                    raise
         else:
             raise ValueError(f"{cdc_type} is not a valid CDC type.  Please provide FULL_REFRESH, STANDARD_STREAM, or APPEND_ONLY_STREAM, or leave it blank to default to FULL_REFRESH.")
         self.update_cdc_tracker(table_info)
@@ -312,6 +325,7 @@ class DuckDBWarehouse(AbstractWarehouse):
 
         column_expressions = []
         binary_columns = []
+        geometry_columns = []
         for col in column_types_raw:
             col_name, col_type = col[1], col[2].lower()
             if 'decimal' in col_type or 'numeric' in col_type:
@@ -334,6 +348,9 @@ class DuckDBWarehouse(AbstractWarehouse):
                 column_expressions.append(f"CAST({col_name} AS VARCHAR) AS {col_name}")
             elif 'time' in col_type:
                 column_expressions.append(f"CAST({col_name} AS VARCHAR) AS {col_name}")
+            elif 'geometry' in col_type:
+                column_expressions.append(f"ST_AsText({col_name}) AS {col_name}")
+                geometry_columns.append(col_name)
             else:
                 column_expressions.append(col_name)
 
@@ -349,7 +366,11 @@ class DuckDBWarehouse(AbstractWarehouse):
             elif 'timestamp' in col.lower():
                 # Ensure consistent formatting for timestamp columns
                 df[col] = df[col].apply(lambda x: x[:26] + x[26:].replace(':', ''))
-        
+            elif col in geometry_columns:
+                df[col] = df[col].apply(lambda x: 'POINT(' + x.split('(')[1] if isinstance(x, str) else x)
+                df[col] = df[col].apply(lambda x: 'POINT(' + x.split('(')[1] if isinstance(x, str) else x)
+                df[col] = df[col].apply(self.normalize_wkt_spacing)
+
         df = df.astype(str)
 
         for col in binary_columns:
@@ -388,4 +409,14 @@ class DuckDBWarehouse(AbstractWarehouse):
     def set_timezone(self, tz):
         self.connection.execute(f"SET TIMEZONE = '{tz}';")
 
+    def normalize_wkt_spacing(self, wkt_str):
+        if not isinstance(wkt_str, str):
+                raise ValueError(f"Expected string WKT geometry, got {type(wkt_str)}: {wkt_str}")
 
+        # Split by first parenthesis to get the geometry type
+        parts = wkt_str.split('(', 1)
+        if len(parts) != 2:
+            raise ValueError(f"Invalid WKT format - missing parentheses: {wkt_str}")
+        geom_type = parts[0].strip()
+        coordinates = parts[1]
+        return f"{geom_type}({coordinates}"

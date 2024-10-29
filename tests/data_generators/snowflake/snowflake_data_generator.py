@@ -49,7 +49,7 @@ def format_value(value):
     else:
         return f"'{value}'"
     
-def generate_snowflake_data(num_rows = 50):
+def generate_snowflake_data(num_rows, include_geo_columns = False):
     def safe_large_float():
         sign = 1 if np.random.random() > 0.5 else -1
         exponent = np.random.randint(0, 308)
@@ -93,10 +93,11 @@ def generate_snowflake_data(num_rows = 50):
             {'key': f'value_{i}'},  # VARIANT
             {'nested': {'key': f'value_{i}'}},  # OBJECT
             [i, i+1, i+2],  # ARRAY
-            # Point(np.random.uniform(-180, 180), np.random.uniform(-90, 90)).wkt,  # GEOGRAPHY snowflake streams do not support geography
-            # Point(np.random.uniform(-180, 180), np.random.uniform(-90, 90)).wkt,  # GEOMETRY snowflake streams do not support geometry
             f"VECTOR_TO_FOLLOW::::{np.random.rand(256).tolist()}::VECTOR(FLOAT, 256)"  # VECTOR_FLOAT_256
         ]
+        if include_geo_columns:
+            row.append(Point(np.random.uniform(-180, 180), np.random.uniform(-90, 90)).wkt)  # GEOGRAPHY
+            row.append(Point(np.random.uniform(-180, 180), np.random.uniform(-90, 90)).wkt)  # GEOMETRY
         data.append(row)
     
     return data

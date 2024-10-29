@@ -191,7 +191,8 @@ def insert_generated_data(test_config, rows = 5):
         for table in test_tables:
             table_info = table["table_info"]
             table_name = source_warehouse.get_full_table_name(table_info)
-            insert_statements = generate_insert_into_select_statements(table_name, generate_snowflake_data(rows))
+            include_geo = table.get("include_geo", False)
+            insert_statements = generate_insert_into_select_statements(table_name, generate_snowflake_data(rows, include_geo))
             # insert_sql = generate_insert_statement(table_name, generate_snowflake_data(1))
             for statement in insert_statements:
                 source_warehouse.execute_query(statement)
@@ -208,18 +209,20 @@ def update_records(test_config, num_to_insert = 5, num_to_update = 5, num_to_del
     
     # Create source and target warehouse connections
     source_warehouse = WarehouseFactory.create_warehouse(test_config.source_type, test_config.source_config)
+    geo_tables = [source_warehouse.get_full_table_name(table["table_info"]) for table in get_test_tables() if table.get('include_geo', False)]
+
 
     try:
         source_warehouse.connect()
         source_warehouse.execute_query(f"USE ROLE {source_warehouse.config["data_generation_role"]}")
         source_warehouse.begin_transaction()
-        
 
         for table_info in test_tables:
             table_name = source_warehouse.get_full_table_name(table_info)
+            include_geo = True if table_name in geo_tables else False
             queries_to_execute = []
             cdc_type = get_cdc_type(table_info)
-            queries_to_execute = generate_insert_into_select_statements(table_name, generate_snowflake_data(num_to_insert))
+            queries_to_execute = generate_insert_into_select_statements(table_name, generate_snowflake_data(num_to_insert, include_geo))
             if cdc_type in ("STANDARD_STREAM", "FULL_REFRESH"):
                 print(f"table_name: {table_name} cdc_type: {cdc_type}")
                 total_records = num_to_delete + num_to_update
@@ -470,3 +473,16 @@ def test_append_only_stream_consistency(test_config, request):
     if request.session.testsfailed:
         pytest.skip("Skipping as previous tests failed")
     confirm_append_only_stream_sync(test_config)
+
+# pytest tests/integration/snowflake_to_duckdb.py -vv -s -k "test_prep"
+# pytest tests/integration/snowflake_to_duckdb.py -vv -s -k "test_setup_source"
+# pytest tests/integration/snowflake_to_duckdb.py -vv -s -k "test_transfer_schema"
+# pytest tests/integration/snowflake_to_duckdb.py -vv -s -k "test_initial_data_sync"
+# pytest tests/integration/snowflake_to_duckdb.py -vv -s -k "test_run_cdc_no_changes"
+# pytest tests/integration/snowflake_to_duckdb.py -vv -s -k "test_update_source_records"
+# pytest tests/integration/snowflake_to_duckdb.py -vv -s -k "test_run_cdc_with_changes"
+# pytest tests/integration/snowflake_to_duckdb.py -vv -s -k "test_full_sync_consistency"
+# pytest tests/integration/snowflake_to_duckdb.py -vv -s -k "test_append_only_stream_consistency"
+
+# pytest tests/integration/snowflake_to_duckdb.py -vv -s -k 
+# "test_update_source_records or test_run_cdc_with_changes or test_full_sync_consistency or test_append_only_stream_consistency"

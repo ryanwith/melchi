@@ -65,6 +65,23 @@ def get_test_tables():
             "schema": "test_melchi_schema", 
             "table": "two_pk_append_only_stream"
         }
+    },    {
+        "schema_location": "tests/data_generators/snowflake/test_table_schemas/full_refresh_with_geo.csv",
+        "table_info": {
+            "database": "melchi_test_data", 
+            "schema": "test_melchi_schema", 
+            "table": "full_refresh_with_geo"
+        },
+        "include_geo": True
+    },    
+    {
+        "schema_location": "tests/data_generators/snowflake/test_table_schemas/no_pk_append_only_stream_with_geo.csv",
+        "table_info": {
+            "database": "melchi_test_data", 
+            "schema": "test_melchi_schema", 
+            "table": "no_pk_append_only_stream_with_geo"
+        },
+        "include_geo": True
     }
     ]
     return test_tables

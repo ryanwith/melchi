@@ -215,7 +215,7 @@ class TestSnowflakeWarehouse:
         def mock_fetchall_response():
             # Get the most recent execute call's arguments
             last_query = mock_cursor.execute.call_args[0][0]
-            if "invalid_cdc_table_invalid_columns" in last_query or "invalid_columns_only" in last_query:
+            if "standard_stream_with_geo" in last_query or "all_good" in last_query:
                 return [["col1", "GEOMETRY", "", "Y", None, "N"]]
             return [["col1", "VARCHAR", "", "Y", None, "N"]]
         
@@ -231,16 +231,10 @@ class TestSnowflakeWarehouse:
                 "cdc_type": "INVALID_CDC_TYPE"
             },
             {
-                "table": "invalid_cdc_table_invalid_columns",
+                "table": "standard_stream_with_geo",
                 "schema": "schema_name",
                 "database": "db_name",
-                "cdc_type": "SECOND_INVALID_CDC_TYPE"
-            },
-            {
-                "table": "invalid_columns_only",
-                "schema": "schema_name",
-                "database": "db_name",
-                "cdc_type": "FULL_REFRESH"
+                "cdc_type": "STANDARD_STREAM"
             },
             {
                 "table": "all_good",
@@ -253,9 +247,7 @@ class TestSnowflakeWarehouse:
         expected_error_message = "\n".join((
             "The following problems were found:",
             "db_name.schema_name.invalid_cdc_table has an invalid cdc_type: INVALID_CDC_TYPE.  Valid values are append_only_stream, standard_stream, and full_refresh.",
-            "db_name.schema_name.invalid_cdc_table_invalid_columns has a geometry or geography column.  Snowflake does not support these in standard streams.  Use append_only_streams or full_refresh for tables with these columns.",
-            "db_name.schema_name.invalid_cdc_table_invalid_columns has an invalid cdc_type: SECOND_INVALID_CDC_TYPE.  Valid values are append_only_stream, standard_stream, and full_refresh.",   
-            "db_name.schema_name.invalid_columns_only has a geometry or geography column.  Snowflake does not support these in standard streams.  Use append_only_streams or full_refresh for tables with these columns."
+            "db_name.schema_name.standard_stream_with_geo has a geometry or geography column.  Snowflake does not support these in standard streams.  Use append_only_streams or full_refresh for tables with these columns.",
         ))
 
         with pytest.raises(ValueError, match=expected_error_message):

@@ -356,9 +356,10 @@ When you run `sync_data`, Melchi handles each table according to its CDC strateg
 - Supports mixing different CDC strategies across tables based on your needs
 
 #### Current Limitations
-- Geography and Geometry columns not supported with `standard_stream`
+- Geography and Geometry columns not supported with `standard_stream` due to snowflake limitations
 - Primary keys must be defined in Snowflake (or a `melchi_row_id` will be added)
 - All tables must be replaced together when modifying the transfer configuration
+- You cannot replicate tables with the same schema and column names into duckdb, even if they are in different databases in Snowflake
 
 ## Contributing
 

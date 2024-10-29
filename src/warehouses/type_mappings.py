@@ -1,6 +1,7 @@
 # type_mappings.py
 
 import warnings
+from ..utils.geometry import convert_geojson_to_wkt
 
 class TypeMapper:
     @staticmethod
@@ -50,3 +51,28 @@ class TypeMapper:
             'JSON': 'VARIANT',
         }
         return mapping.get(duckdb_type.upper(), 'VARCHAR')
+    
+    @staticmethod
+    def process_df(source_warehouse, target_warehouse, df):
+        try:
+            source_warehouse_type = source_warehouse.warehouse_type
+            target_warehouse_type = target_warehouse.warehouse_type
+            if source_warehouse_type.lower() == "snowflake" and target_warehouse_type.lower() == "duckdb":
+                df = process_df_snowflake_to_duckdb(df)
+                return df
+        except Exception as e:
+            print(f"Error processing df: {e}")
+            raise
+
+    @staticmethod
+    def process_df_snowflake_to_duckdb(df):
+        geometry_columns = [col for col in df.columns if 'GEOMETRY' in col.upper() or 'GEOGRAPHY' in col.upper()]
+    
+        if not geometry_columns:
+            return df
+        
+        df_copy = df.copy()
+        for col in geometry_columns:
+            df_copy[col] = df_copy[col].apply(convert_geojson_to_wkt)
+        
+        return df_copy

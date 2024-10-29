@@ -5,6 +5,7 @@ import pandas as pd
 from .abstract_warehouse import AbstractWarehouse
 from ..utils.table_config import get_cdc_type
 import re
+from .type_mappings import TypeMapper
 
 
 class SnowflakeWarehouse(AbstractWarehouse):
@@ -298,15 +299,16 @@ class SnowflakeWarehouse(AbstractWarehouse):
         
         query = f"SELECT {', '.join(column_expressions)} FROM {table_name} ORDER BY {order_by_column}"
         df = self.get_data_as_df(query)
-        
+        processed_df = TypeMapper.process_df_snowflake_to_duckdb(df)
+
         # Format timestamp columns
         for col in timestamp_tz_columns:
-            df[col] = df[col].apply(lambda x: re.sub(r'([-+]\d{2}):(\d{2})$', r'\1\2', x))
+            processed_df[col] = processed_df[col].apply(lambda x: re.sub(r'([-+]\d{2}):(\d{2})$', r'\1\2', x))
         
         # Convert all columns to string for consistent comparison
-        df = df.astype(str)
+        processed_df = processed_df.astype(str)
         
-        return df
+        return processed_df
 
     def set_timezone(self, tz):
         try:
@@ -318,12 +320,14 @@ class SnowflakeWarehouse(AbstractWarehouse):
     def find_problems(self, tables_to_transfer):
         problems = []
         for table_info in tables_to_transfer:
-            if self.has_geometry_or_geography_column(self.get_schema(table_info)):
-                problems.append(f"{self.get_full_table_name(table_info)} has a geometry or geography column.  Snowflake does not support these in standard streams.  Use append_only_streams or full_refresh for tables with these columns.")
+            print(table_info)
             try:
-                get_cdc_type(table_info)
+                cdc_type = get_cdc_type(table_info)
             except ValueError as e:
                 problems.append(f"{self.get_full_table_name(table_info)} has an invalid cdc_type: {table_info['cdc_type']}.  Valid values are append_only_stream, standard_stream, and full_refresh.")
+                continue
+            if cdc_type == "STANDARD_STREAM" and self.has_geometry_or_geography_column(self.get_schema(table_info)):
+                problems.append(f"{self.get_full_table_name(table_info)} has a geometry or geography column.  Snowflake does not support these in standard streams.  Use append_only_streams or full_refresh for tables with these columns.")
         return problems
 
     def has_geometry_or_geography_column(self, schema):

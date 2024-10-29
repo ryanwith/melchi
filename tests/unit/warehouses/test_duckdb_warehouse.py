@@ -26,8 +26,23 @@ def warehouse(config):
 # Connection Tests
 def test_connect(warehouse):
     with patch('duckdb.connect') as mock_connect:
+        # Set up mock connection with execute method
+        mock_connection = Mock()
+        mock_connect.return_value = mock_connection
+        
+        # Call connect
         warehouse.connect()
+        
+        # Verify connection is created with correct database
         mock_connect.assert_called_once_with(warehouse.config['database'])
+        
+        # Verify spatial extension commands are executed in correct order
+        expected_calls = [
+            call("INSTALL spatial;"),
+            call("LOAD spatial;")
+        ]
+        mock_connection.execute.assert_has_calls(expected_calls)
+        assert mock_connection.execute.call_count == 2
 
 def test_disconnect(config):
     with patch('duckdb.connect') as mock_connect:
