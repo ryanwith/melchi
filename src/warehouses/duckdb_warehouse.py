@@ -235,12 +235,19 @@ class DuckDBWarehouse(AbstractWarehouse):
     def _process_delete_batches(self, deletes_df, table_info):
         """Process deletes in batches using primary keys."""
         full_table_name = self.get_full_table_name(table_info)
-        primary_keys = self.get_primary_keys(table_info)
-        formatted_primary_keys = ", ".join(primary_keys)
         temp_table = f"{table_info["table"]}_deletes_temp"
+
+        primary_keys = None
+        formatted_primary_keys = None
+        iterations = 0
         try:
             for batch in deletes_df:
+
                 try:
+                    if iterations == 0:
+                        primary_keys = self.get_primary_keys(table_info)
+                        formatted_primary_keys = ", ".join(primary_keys)
+                    iterations += 1
                     self.connection.execute(f"CREATE OR REPLACE TEMP TABLE {temp_table} AS (SELECT * FROM batch);")
                     
                     delete_sql = f"""
@@ -255,14 +262,18 @@ class DuckDBWarehouse(AbstractWarehouse):
                     # Later: Add error status to captured_tables
                     continue
         finally:
-            self.connection.execute(f"DROP TABLE IF EXISTS {temp_table};")
+            self.connection.execute(f"DROP TABLE IF EXISTS {temp_table};") if iterations > 0 else None
 
     def _process_insert_batches(self, df, table_info):
         """Process batches of inserts directly from DataFrame."""
         full_table_name = self.get_full_table_name(table_info)
-        formatted_columns = ", ".join([x["name"] for x in self.get_schema(table_info)])
+        formatted_columns = None
+        iterations = 0
         batches_exist = False
         for batch in df:
+            if iterations == 0:
+                formatted_columns = ", ".join([x["name"] for x in self.get_schema(table_info)])
+            iterations += 1
             batches_exist = True
             try:
                 processed_batch = TypeMapper.process_df_snowflake_to_duckdb(batch)

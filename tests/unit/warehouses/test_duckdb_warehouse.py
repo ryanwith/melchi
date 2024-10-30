@@ -407,7 +407,7 @@ def test_sync_table_standard_stream_operations_with_pk(warehouse):
             f"CREATE OR REPLACE TEMP TABLE test_table_deletes_temp AS (SELECT * FROM batch);",
             """DELETE FROM test_schema.test_table WHERE (id) IN ( SELECT (id) FROM test_table_deletes_temp );""".strip(),
             "DROP TABLE IF EXISTS test_table_deletes_temp;",
-            """INSERT INTO test_schema.test_table (SELECT id, name FROM batch);""".strip(),
+            """INSERT INTO test_schema.test_table (SELECT id, name FROM processed_batch);""".strip(),
             "UPDATE cdc_schema.captured_tables SET updated_at = current_timestamp WHERE table_name = 'test_table' and schema_name = 'test_schema';"
         ]
         
@@ -457,7 +457,7 @@ def test_sync_table_full_refresh(warehouse):
         
         expected_calls = [
             "TRUNCATE TABLE test_schema.test_table;",
-            "INSERT INTO test_schema.test_table (SELECT id, name FROM batch);"
+            "INSERT INTO test_schema.test_table (SELECT id, name FROM processed_batch);"
         ]
         
         actual_calls = [args[0] for args, kwargs in mock_execute.call_args_list]
@@ -507,7 +507,7 @@ def test_sync_table_standard_stream_operations_with_two_pk(warehouse):
             f"CREATE OR REPLACE TEMP TABLE test_table_deletes_temp AS (SELECT * FROM batch);",
             """DELETE FROM test_schema.test_table WHERE (id, id2) IN ( SELECT (id, id2) FROM test_table_deletes_temp );""".strip(),
             "DROP TABLE IF EXISTS test_table_deletes_temp;",
-            """INSERT INTO test_schema.test_table (SELECT id, id2, name FROM batch);""".strip(),
+            """INSERT INTO test_schema.test_table (SELECT id, id2, name FROM processed_batch);""".strip(),
             "UPDATE cdc_schema.captured_tables SET updated_at = current_timestamp WHERE table_name = 'test_table' and schema_name = 'test_schema';"
         ]
         
@@ -557,7 +557,7 @@ def test_sync_table_append_only_stream(warehouse):
 
 
         expected_calls = [
-            """INSERT INTO test_schema.test_table (SELECT name, value FROM batch);""".strip(),
+            """INSERT INTO test_schema.test_table (SELECT name, value FROM processed_batch);""".strip(),
             "UPDATE cdc_schema.captured_tables SET updated_at = current_timestamp WHERE table_name = 'test_table' and schema_name = 'test_schema';"
         ]
         
@@ -584,26 +584,22 @@ def test_sync_table_no_rows(warehouse):
     mock_batch.columns = []
 
     # Create mock DataFrames with batches
-    inserts_df = Mock()
-    inserts_df.empty = True
-    inserts_df.columns = []
+    insert_batches = Mock()
     # Create a list with one mock batch and make it iterable
-    inserts_df.__iter__ = lambda self: iter([mock_batch])
+    insert_batches.__iter__ = lambda self: iter([mock_batch])
     
-    deletes_df = Mock()
-    deletes_df.empty = True
-    deletes_df.columns = []
+    delete_batches = Mock()
     # Create a list with one mock batch and make it iterable
-    deletes_df.__iter__ = lambda self: iter([mock_batch])
+    delete_batches.__iter__ = lambda self: iter([mock_batch])
 
 
     updates_dict_with_all = {
-        "records_to_insert": inserts_df,
-        "records_to_delete": deletes_df
+        "records_to_insert": [],
+        "records_to_delete": []
     }
 
     updates_dict_with_no_deletes = {
-        "records_to_insert": inserts_df,
+        "records_to_insert": [],
         "records_to_delete": None
     }
 
@@ -617,8 +613,10 @@ def test_sync_table_no_rows(warehouse):
         expected_calls = [
             "UPDATE cdc_schema.captured_tables SET updated_at = current_timestamp WHERE table_name = 'standard_stream_table' and schema_name = 'test_schema';",
             "UPDATE cdc_schema.captured_tables SET updated_at = current_timestamp WHERE table_name = 'append_only_stream_table' and schema_name = 'test_schema';",
+            "TRUNCATE TABLE test_schema.full_refresh_table;",
             "UPDATE cdc_schema.captured_tables SET updated_at = current_timestamp WHERE table_name = 'full_refresh_table' and schema_name = 'test_schema';"
         ]
+        print("")
 
         for expected_sql, actual_sql in zip(expected_calls, actual_calls):
             assert expected_sql == actual_sql
