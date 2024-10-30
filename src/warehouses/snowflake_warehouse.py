@@ -224,7 +224,7 @@ class SnowflakeWarehouse(AbstractWarehouse):
                     FROM {stream_processing_table_name}
                     WHERE "METADATA$ACTION" = 'DELETE'
                 """
-                updates_dict["records_to_delete"] = self.get_data_as_df(delete_query)
+                updates_dict["records_to_delete"] = self.get_df_batches(delete_query)
 
             # Get records to insert (for both stream types)
             insert_query = f"""
@@ -232,19 +232,25 @@ class SnowflakeWarehouse(AbstractWarehouse):
                 FROM {stream_processing_table_name}
                 WHERE "METADATA$ACTION" = 'INSERT'
             """
-            insert_df = self.get_data_as_df(insert_query)
-            insert_df.rename(columns={
-                "METADATA$ROW_ID": "MELCHI_ROW_ID",
-                "METADATA$ACTION": "MELCHI_METADATA_ACTION"
-            }, inplace=True)
-            updates_dict["records_to_insert"] = insert_df
+            raw_batches = self.get_df_batches(insert_query)
+            processed_batches = []
+            for batch in raw_batches:
+                batch.rename(columns={
+                    "METADATA$ROW_ID": "MELCHI_ROW_ID",
+                    "METADATA$ACTION": "MELCHI_METADATA_ACTION"
+                }, inplace=True)
+                processed_batches.append(batch)
+            updates_dict["records_to_insert"] = processed_batches
 
         elif cdc_type == "FULL_REFRESH":
             # For full refresh, we only need insert records
-            updates_dict["records_to_insert"] = self.get_data_as_df(
+            updates = self.get_df_batches(
                 f"SELECT * FROM {self.get_full_table_name(table_info)}"
             )
-
+            all_updates = []
+            for df in updates:
+                all_updates.append(df)
+            updates_dict["records_to_insert"] = all_updates
         return updates_dict
 
 
@@ -256,7 +262,7 @@ class SnowflakeWarehouse(AbstractWarehouse):
         if return_results:
             return self.cursor.fetchall()
 
-    def get_data_as_df(self, query_text):
+    def get_df_batches(self, query_text):
         """
         Executes a query and returns results as batches of DataFrames.
         Uses configured batch size if provided, otherwise uses Snowflake's default batching.
@@ -331,7 +337,7 @@ class SnowflakeWarehouse(AbstractWarehouse):
                 column_expressions.append(col_name)
         
         query = f"SELECT {', '.join(column_expressions)} FROM {table_name} ORDER BY {order_by_column}"
-        df = self.get_data_as_df(query)
+        df = [df for df in self.get_df_batches(query)][0]
         processed_df = TypeMapper.process_df_snowflake_to_duckdb(df)
 
         # Format timestamp columns

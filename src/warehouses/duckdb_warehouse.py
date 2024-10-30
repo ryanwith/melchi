@@ -209,35 +209,30 @@ class DuckDBWarehouse(AbstractWarehouse):
         """
         full_table_name = self.get_full_table_name(table_info)
         cdc_type = get_cdc_type(table_info)
-        inserts_df = updates_dict.get("records_to_insert")
+        insert_batches = updates_dict.get("records_to_insert")
 
+        data_inserted = False
         if cdc_type == "FULL_REFRESH":
-            
-            if inserts_df is None or inserts_df.empty:
-                print(f"No records to ingest for {full_table_name}")
-            else:
-                processed_df = TypeMapper.process_df_snowflake_to_duckdb(inserts_df)
+            if insert_batches is not None:
                 self.connection.execute(f"TRUNCATE TABLE {full_table_name};")
-                self._process_insert_batches(processed_df, table_info)
-
+                data_inserted = self._process_insert_batches(insert_batches, table_info)
         elif cdc_type in ("APPEND_ONLY_STREAM", "STANDARD_STREAM"):
             if cdc_type == "STANDARD_STREAM" and updates_dict.get("records_to_delete") is not None:
                 # deletes must be processed first
-                deletes_df = updates_dict["records_to_delete"]
-                if not deletes_df.empty:
-                    self._process_delete_batch(deletes_df, table_info)
-
-            if inserts_df is not None and not inserts_df.empty:
+                delete_batches = updates_dict["records_to_delete"]
+                self._process_delete_batches(delete_batches, table_info)
+            if insert_batches is not None:
                 # process inserts after
-                processed_df = TypeMapper.process_df_snowflake_to_duckdb(inserts_df)
-                self._process_insert_batches(processed_df, table_info)            
+                data_inserted = self._process_insert_batches(insert_batches, table_info)  
         else: #this condition should never be hit as get_cdc_type validates the cdc_type
             raise ValueError(f"{cdc_type} is not a valid CDC type.  Please provide FULL_REFRESH, STANDARD_STREAM, or APPEND_ONLY_STREAM, or leave it blank to default to FULL_REFRESH.")
+        if data_inserted == False:
+            print(f"No records ingested into {full_table_name}.")
 
         self.update_cdc_tracker(table_info)
         # update info of last update time
 
-    def _process_delete_batch(self, deletes_df, table_info):
+    def _process_delete_batches(self, deletes_df, table_info):
         """Process deletes in batches using primary keys."""
         full_table_name = self.get_full_table_name(table_info)
         primary_keys = self.get_primary_keys(table_info)
@@ -266,15 +261,18 @@ class DuckDBWarehouse(AbstractWarehouse):
         """Process batches of inserts directly from DataFrame."""
         full_table_name = self.get_full_table_name(table_info)
         formatted_columns = ", ".join([x["name"] for x in self.get_schema(table_info)])
-
+        batches_exist = False
         for batch in df:
+            batches_exist = True
             try:
-                self.connection.execute(f"INSERT INTO {full_table_name} (SELECT {formatted_columns} FROM batch);")
+                processed_batch = TypeMapper.process_df_snowflake_to_duckdb(batch)
+                self.connection.execute(f"INSERT INTO {full_table_name} (SELECT {formatted_columns} FROM processed_batch);")
             except Exception as e:
                 print(f"Error processing insert batch for {full_table_name}: {str(e)}")
                 # Later: Add error status to captured_tables
                 continue
-            
+        return batches_exist    
+        
     def cleanup_source(self, table_info):
         pass
 
@@ -291,7 +289,7 @@ class DuckDBWarehouse(AbstractWarehouse):
         primary_keys = sorted(self.connection.execute(get_primary_keys_query).fetchone()[0])
         return primary_keys
     
-    def get_data_as_df(self, query_text):
+    def get_df_batches(self, query_text):
         try:
             # First, get the result set
             result = self.connection.execute(query_text)
@@ -360,7 +358,7 @@ class DuckDBWarehouse(AbstractWarehouse):
                 column_expressions.append(col_name)
 
         subquery = f"SELECT {', '.join(column_expressions)} FROM {table_name} order by {order_by_column};"
-        df = self.get_data_as_df(subquery)
+        df = self.get_df_batches(subquery)
 
         # Convert specific columns to ensure consistent representation
         for col in df.columns:

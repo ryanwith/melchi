@@ -146,7 +146,7 @@ class AbstractWarehouse(ABC):
         pass
 
     @abstractmethod
-    def get_data_as_df(self, query_text):
+    def get_df_batches(self, query_text):
         """
         Gets all data from a table as a DataFrame.
         Used for full refresh operations.
