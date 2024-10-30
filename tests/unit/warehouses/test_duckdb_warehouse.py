@@ -365,11 +365,8 @@ def test_create_table_with_default_values(warehouse):
         for expected, actual in zip(expected_calls, actual_calls):
             assert normalize_sql(expected) == normalize_sql(actual)
 
-def test_sync_table_standard_stream_operations_with_batch_size(warehouse):
-    pass
-
 # Data Synchronization Tests
-def test_sync_table_standard_stream_operations_with_pk_no_batch_size(warehouse):
+def test_sync_table_standard_stream_operations_with_pk(warehouse):
     """Test the complete sync operation including temp table, deletes, inserts and cleanup."""
     table_info = {'schema': 'test_schema', 'table': 'test_table', 'cdc_type': 'STANDARD_STREAM'}
     

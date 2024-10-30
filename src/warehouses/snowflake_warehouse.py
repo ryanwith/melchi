@@ -264,15 +264,7 @@ class SnowflakeWarehouse(AbstractWarehouse):
         try:
             cursor = self.connection.cursor()
             cursor.execute(query_text)
-            print("Query executed successfully")
-            try:
-                batch_size = self.config.get('batch_size')
-                if batch_size:
-                    return cursor.fetch_pandas_batches(batch_size=batch_size)
-                return cursor.fetch_pandas_batches()
-            except Exception as e:
-                print(f"Error fetching as DataFrame batches: {str(e)}")
-                raise
+            return cursor.fetch_pandas_batches()
         except Exception as e:
             print(f"Error executing query: {str(e)}")
             raise

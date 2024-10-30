@@ -13,7 +13,6 @@ source:
   replace_existing: true
   data_generation_role: data_generation_role
   melchi_role: workhorse
-  batch_size: 2
 
 target:
   type: duckdb
@@ -23,9 +22,6 @@ target:
 
 tables_config:
   path: "tests/config/tables_to_transfer.csv"
-
-default_config:
-  batch_size: 1000
 
 # test_scenarios:
 #   - name: basic_types_default
