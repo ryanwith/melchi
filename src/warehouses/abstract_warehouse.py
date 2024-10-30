@@ -158,3 +158,6 @@ class AbstractWarehouse(ABC):
         Sets the timezone for the warehouse
         """
         pass
+
+    def get_batch_size(self):
+        return self.config.get("batch_size")

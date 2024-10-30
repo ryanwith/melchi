@@ -27,8 +27,8 @@ def sync_data(config):
 def sync_table(source_warehouse, target_warehouse, table_info):
     try:
         target_warehouse.begin_transaction()
-        cdc_df = source_warehouse.get_updates(table_info)
-        target_warehouse.sync_table(table_info, cdc_df)
+        updates_dict = source_warehouse.get_updates(table_info)
+        target_warehouse.sync_table(table_info, updates_dict)
         target_warehouse.commit_transaction()
 
         # if there are any issues with commiting into the target database this won't be executed
@@ -40,19 +40,3 @@ def sync_table(source_warehouse, target_warehouse, table_info):
         target_warehouse.rollback_transaction()
         print(f"Error ingesting data sync: {e}")
         raise
-
-# def fully_refresh_table(source_warehouse, target_warehouse, table_info):
-#     try:
-#         target_warehouse.begin_transaction()
-#         cdc_df = source_warehouse.get_data_as_df(table_info)
-#         target_warehouse.sync_table(table_info, cdc_df)
-#         target_warehouse.commit_transaction()
-
-#         # if there are any issues with commiting into the target database this won't be executed
-#         # the CDC data will still exist in the source warehouse and will be able to be grabbed the next time sync_data is run
-#         source_warehouse.cleanup_source(table_info)
-#     except Exception as e:
-#         source_warehouse.rollback_transaction()
-#         target_warehouse.rollback_transaction()
-#         print(f"Error ingesting data sync: {e}")
-#         raise

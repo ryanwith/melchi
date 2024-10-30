@@ -53,7 +53,7 @@ class TestSnowflakeWarehouse:
         mock_cursor.execute.assert_any_call("USE WAREHOUSE test_warehouse;")
 
     def test_disconnect(self, snowflake_source_warehouse, mock_snowflake_connector):
-        """Test that the database conneciton is closed"""
+        """Test that the database connection is closed"""
         """Test that the snowflake_source_warehouse connection and cursor are set to None"""
         # Arrange
         mock_connection = Mock()
@@ -380,43 +380,69 @@ class TestSnowflakeWarehouse:
         ]
         assert mock_cursor.execute.call_args_list == expected_calls
 
-    # def test_generate_source_sql(self, snowflake_source_warehouse):
-    #     """Test SQL generation for tables across different databases and schemas"""
-    #     tables = [
-    #         {"database": "db1", "schema": "schema1", "table": "table1"},
-    #         {"database": "db1", "schema": "schema1", "table": "table2"},
-    #         {"database": "db2", "schema": "schema1", "table": "table3"},
-    #         {"database": "db2", "schema": "schema2", "table": "table4"}
-    #     ]
-
-    #     expected_statements = [
-    #         "USE ROLE ACCOUNTADMIN;",
-    #         "CREATE SCHEMA IF NOT EXISTS test_cdc_db.test_cdc_schema;",
-    #         "ALTER TABLE db1.schema1.table1 SET CHANGE_TRACKING = TRUE;",
-    #         "ALTER TABLE db1.schema1.table2 SET CHANGE_TRACKING = TRUE;",
-    #         "ALTER TABLE db2.schema1.table3 SET CHANGE_TRACKING = TRUE;",
-    #         "ALTER TABLE db2.schema2.table4 SET CHANGE_TRACKING = TRUE;",
-    #         "GRANT USAGE ON WAREHOUSE test_warehouse TO ROLE test_role;",
-    #         "GRANT USAGE ON DATABASE test_cdc_db TO ROLE test_role;",
-    #         "GRANT USAGE, CREATE TABLE, CREATE STREAM ON SCHEMA test_cdc_db.test_cdc_schema TO ROLE test_role;",
-    #         "GRANT USAGE ON DATABASE db1 TO ROLE test_role;",
-    #         "GRANT USAGE ON DATABASE db2 TO ROLE test_role;",
-    #         "GRANT USAGE ON SCHEMA db1.schema1 TO ROLE test_role;",
-    #         "GRANT USAGE ON SCHEMA db2.schema1 TO ROLE test_role;",
-    #         "GRANT USAGE ON SCHEMA db2.schema2 TO ROLE test_role;",
-    #         "GRANT SELECT ON TABLE db1.schema1.table1 TO ROLE test_role;",
-    #         "GRANT SELECT ON TABLE db1.schema1.table2 TO ROLE test_role;",
-    #         "GRANT SELECT ON TABLE db2.schema1.table3 TO ROLE test_role;",
-    #         "GRANT SELECT ON TABLE db2.schema2.table4 TO ROLE test_role;"
-    #     ]
-
-    #     generated_sql = snowflake_source_warehouse.generate_source_sql(tables)
+    def test_get_data_as_df_with_batch_size(self, mock_snowflake_connector):
+        """Test that batch_size from config is used when fetching DataFrame batches"""
+        # Arrange
+        config = {
+            "account": "test_account",
+            "user": "test_user",
+            "password": "test_password",
+            "role": "test_role",
+            "warehouse": "test_warehouse",
+            "database": "test_database",
+            "change_tracking_database": "test_cdc_db",
+            "change_tracking_schema": "test_cdc_schema",
+            "warehouse_role": "SOURCE",
+            "batch_size": 1000
+        }
         
-    #     # Extract actual SQL statements (ignore comments and empty lines)
-    #     actual_statements = [
-    #         line.strip() for line in generated_sql.split('\n')
-    #         if line.strip() and not line.strip().startswith('--')
-    #     ]
-
-    #     # Compare the meaningful SQL statements
-    #     assert actual_statements == expected_statements
+        warehouse = SnowflakeWarehouse(config)
+        
+        # Create mock cursor that returns itself from execute()
+        mock_cursor = Mock()
+        mock_cursor.execute.return_value = mock_cursor
+        
+        # Set up connection to return our mock cursor
+        mock_connection = Mock()
+        mock_connection.cursor.return_value = mock_cursor
+        warehouse.connection = mock_connection
+        
+        # Act
+        warehouse.get_data_as_df("SELECT * FROM test_table")
+        
+        # Assert
+        mock_cursor.execute.assert_called_with("SELECT * FROM test_table")
+        mock_cursor.fetch_pandas_batches.assert_called_once_with(batch_size=1000)
+    
+    def test_get_data_as_df_without_batch_size(snowflake_source_warehouse, mock_snowflake_connector):
+        """Test that batch_size from config is used when fetching DataFrame batches"""
+        # Arrange
+        config = {
+            "account": "test_account",
+            "user": "test_user",
+            "password": "test_password",
+            "role": "test_role",
+            "warehouse": "test_warehouse",
+            "database": "test_database",
+            "change_tracking_database": "test_cdc_db",
+            "change_tracking_schema": "test_cdc_schema",
+            "warehouse_role": "SOURCE"
+        }
+        
+        warehouse = SnowflakeWarehouse(config)
+        
+        # Create mock cursor that returns itself from execute()
+        mock_cursor = Mock()
+        mock_cursor.execute.return_value = mock_cursor
+        
+        # Set up connection to return our mock cursor
+        mock_connection = Mock()
+        mock_connection.cursor.return_value = mock_cursor
+        warehouse.connection = mock_connection
+        
+        # Act
+        warehouse.get_data_as_df("SELECT * FROM test_table")
+        
+        # Assert
+        mock_cursor.execute.assert_called_with("SELECT * FROM test_table")
+        mock_cursor.fetch_pandas_batches.assert_called_once_with()

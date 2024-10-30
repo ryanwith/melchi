@@ -171,7 +171,7 @@ class SnowflakeWarehouse(AbstractWarehouse):
 
     # DATA SYNCHRONIZATION
     
-    def sync_table(self, table_info, df):
+    def sync_table(self, table_info, updates_dict):
         raise NotImplementedError("Snowflake is not yet supported as a target")
 
     def cleanup_source(self, table_info):
@@ -195,19 +195,58 @@ class SnowflakeWarehouse(AbstractWarehouse):
 
     def get_updates(self, table_info):
         """
-        Retrieves CDC data from stream table and returns changes.
-        Advances the stream offset and returns changes as a DataFrame.
+        Retrieves CDC data from stream table and returns changes in a dictionary format.
+        For standard streams: returns both delete and insert records
+        For append-only streams: returns only insert records
+        For full refresh: returns only insert records
         """
         cdc_type = get_cdc_type(table_info)
+        updates_dict = {
+            "records_to_delete": None,
+            "records_to_insert": None
+        }
+
         if cdc_type in ("APPEND_ONLY_STREAM", "STANDARD_STREAM"):
             stream_processing_table_name = self.get_stream_processing_table_name(table_info)
             stream_name = self.get_stream_name(table_info)
+            
+            # Load stream data into processing table
             self.cursor.execute(f"INSERT INTO {stream_processing_table_name} SELECT * FROM {stream_name};")
-            changes = self.get_data_as_df(f"SELECT * FROM {stream_processing_table_name}")
-            changes.rename(columns={"METADATA$ROW_ID": "MELCHI_ROW_ID", "METADATA$ACTION": "MELCHI_METADATA_ACTION"}, inplace=True)
-            return changes
+            
+            if cdc_type == "STANDARD_STREAM":
+                # For standard streams, get primary keys of records to delete
+                primary_keys = self.get_primary_keys(table_info)
+                if primary_keys == []:
+                    primary_keys = ["METADATA$ROW_ID as MELCHI_ROW_ID"]
+                pk_columns = ", ".join(primary_keys)
+                delete_query = f"""
+                    SELECT {pk_columns}
+                    FROM {stream_processing_table_name}
+                    WHERE "METADATA$ACTION" = 'DELETE'
+                """
+                updates_dict["records_to_delete"] = self.get_data_as_df(delete_query)
+
+            # Get records to insert (for both stream types)
+            insert_query = f"""
+                SELECT * 
+                FROM {stream_processing_table_name}
+                WHERE "METADATA$ACTION" = 'INSERT'
+            """
+            insert_df = self.get_data_as_df(insert_query)
+            insert_df.rename(columns={
+                "METADATA$ROW_ID": "MELCHI_ROW_ID",
+                "METADATA$ACTION": "MELCHI_METADATA_ACTION"
+            }, inplace=True)
+            updates_dict["records_to_insert"] = insert_df
+
         elif cdc_type == "FULL_REFRESH":
-            return self.get_data_as_df(f"SELECT * FROM {self.get_full_table_name(table_info)}")
+            # For full refresh, we only need insert records
+            updates_dict["records_to_insert"] = self.get_data_as_df(
+                f"SELECT * FROM {self.get_full_table_name(table_info)}"
+            )
+
+        return updates_dict
+
 
     # UTILITY METHODS
     
@@ -217,20 +256,22 @@ class SnowflakeWarehouse(AbstractWarehouse):
         if return_results:
             return self.cursor.fetchall()
 
-    def get_data_as_df(self, query_text, batch_size = None):
+    def get_data_as_df(self, query_text):
+        """
+        Executes a query and returns results as batches of DataFrames.
+        Uses configured batch size if provided, otherwise uses Snowflake's default batching.
+        """
         try:
             cursor = self.connection.cursor()
             cursor.execute(query_text)
             print("Query executed successfully")
             try:
-                if batch_size == None:
-                    df = cursor.fetch_pandas_all()
-                else:
-                    df = cursor.fetch_pandas_batches(batch_size)
-                print(f"Data fetched as DataFrame. Shape: {df.shape}")
-                return df
+                batch_size = self.config.get('batch_size')
+                if batch_size:
+                    return cursor.fetch_pandas_batches(batch_size=batch_size)
+                return cursor.fetch_pandas_batches()
             except Exception as e:
-                print(f"Error fetching as DataFrame: {str(e)}")
+                print(f"Error fetching as DataFrame batches: {str(e)}")
                 raise
         except Exception as e:
             print(f"Error executing query: {str(e)}")

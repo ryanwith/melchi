@@ -202,74 +202,79 @@ class DuckDBWarehouse(AbstractWarehouse):
 
     # DATA SYNCHRONIZATION
 
-    def sync_table(self, table_info, df):
+    def sync_table(self, table_info, updates_dict):
         """
-        Syncs changes from DataFrame to target table using metadata action flags.
-        Handles both inserts and deletes.
+        Syncs changes from source to target table, processing batches of deletes and inserts.
+        Updates come as a dictionary with optional records_to_delete and records_to_insert DataFrames.
         """
-
         full_table_name = self.get_full_table_name(table_info)
         cdc_type = get_cdc_type(table_info)
-        processed_df = TypeMapper.process_df_snowflake_to_duckdb(df)
-        df_rows = processed_df.shape[0]
-        if df_rows == 0:
-            print(f"No records to ingest for {full_table_name}")
+        inserts_df = updates_dict.get("records_to_insert")
+
+        if cdc_type == "FULL_REFRESH":
+            
+            if inserts_df is None or inserts_df.empty:
+                print(f"No records to ingest for {full_table_name}")
+            else:
+                processed_df = TypeMapper.process_df_snowflake_to_duckdb(inserts_df)
+                self.connection.execute(f"TRUNCATE TABLE {full_table_name};")
+                self._process_insert_batches(processed_df, table_info)
+
         elif cdc_type in ("APPEND_ONLY_STREAM", "STANDARD_STREAM"):
-            temp_table_name = table_info["table"] + "_melchi_cdc"
+            if cdc_type == "STANDARD_STREAM" and updates_dict.get("records_to_delete") is not None:
+                # deletes must be processed first
+                deletes_df = updates_dict["records_to_delete"]
+                if not deletes_df.empty:
+                    self._process_delete_batch(deletes_df, table_info)
 
-            # somehow this grabs the dataframe but i am not sure how
-            self.connection.execute(f"CREATE OR REPLACE TEMP TABLE {temp_table_name} AS (SELECT * FROM processed_df);") 
-
-            # format oclumns for insert statements
-            columns_to_insert = []
-            schema = self.get_schema(table_info)
-
-            for col in schema:
-                columns_to_insert.append(col["name"])
-
-            formatted_columns = ", ".join(columns_to_insert)
-
-            if cdc_type == 'STANDARD_STREAM':
-            # deletes only needed for standard streams as there's no deletes with full refreshes or append only streams
-                formatted_primary_keys = ", ".join(self.get_primary_keys(table_info))
-                delete_sql_statement = f"""DELETE FROM {full_table_name}
-                    WHERE ({formatted_primary_keys}) IN 
-                    (
-                        SELECT ({formatted_primary_keys})
-                        FROM {temp_table_name}
-                        WHERE melchi_metadata_action = 'DELETE'
-                    );
-                """
-                print(delete_sql_statement)
-                self.connection.execute(delete_sql_statement)
-
-            # goes after deletes as update records will need to be deleted and then inserted into
-            insert_sql_statement = f"""INSERT INTO {full_table_name}
-                SELECT {formatted_columns} FROM {temp_table_name}
-                WHERE melchi_metadata_action = 'INSERT';
-            """
-
-            self.connection.execute(insert_sql_statement)
-            self.connection.execute(f"DROP TABLE {temp_table_name};")
-
-        elif cdc_type == "FULL_REFRESH":
-            queries = [
-                f"TRUNCATE TABLE {full_table_name};",
-                f"INSERT INTO {full_table_name} (SELECT * FROM processed_df);"
-            ]
-            for query in queries:
-                try:                
-                    self.connection.execute(query)
-                except Exception as e:
-                    print(f"Error executing query: {query}")
-                    print(f"Error details: {str(e)}")
-                    raise
-        else:
+            if inserts_df is not None and not inserts_df.empty:
+                # process inserts after
+                processed_df = TypeMapper.process_df_snowflake_to_duckdb(inserts_df)
+                self._process_insert_batches(processed_df, table_info)            
+        else: #this condition should never be hit as get_cdc_type validates the cdc_type
             raise ValueError(f"{cdc_type} is not a valid CDC type.  Please provide FULL_REFRESH, STANDARD_STREAM, or APPEND_ONLY_STREAM, or leave it blank to default to FULL_REFRESH.")
+
         self.update_cdc_tracker(table_info)
-        # add update table info query
+        # update info of last update time
 
+    def _process_delete_batch(self, deletes_df, table_info):
+        """Process deletes in batches using primary keys."""
+        full_table_name = self.get_full_table_name(table_info)
+        primary_keys = self.get_primary_keys(table_info)
+        formatted_primary_keys = ", ".join(primary_keys)
+        temp_table = f"{table_info["table"]}_deletes_temp"
+        try:
+            for batch in deletes_df:
+                try:
+                    self.connection.execute(f"CREATE OR REPLACE TEMP TABLE {temp_table} AS (SELECT * FROM batch);")
+                    
+                    delete_sql = f"""
+                        DELETE FROM {full_table_name}
+                        WHERE ({formatted_primary_keys}) IN (
+                            SELECT ({formatted_primary_keys}) FROM {temp_table}
+                        );
+                    """
+                    self.connection.execute(delete_sql)
+                except Exception as e:
+                    print(f"Error processing delete batch for {full_table_name}: {str(e)}")
+                    # Later: Add error status to captured_tables
+                    continue
+        finally:
+            self.connection.execute(f"DROP TABLE IF EXISTS {temp_table};")
 
+    def _process_insert_batches(self, df, table_info):
+        """Process batches of inserts directly from DataFrame."""
+        full_table_name = self.get_full_table_name(table_info)
+        formatted_columns = ", ".join([x["name"] for x in self.get_schema(table_info)])
+
+        for batch in df:
+            try:
+                self.connection.execute(f"INSERT INTO {full_table_name} (SELECT {formatted_columns} FROM batch);")
+            except Exception as e:
+                print(f"Error processing insert batch for {full_table_name}: {str(e)}")
+                # Later: Add error status to captured_tables
+                continue
+            
     def cleanup_source(self, table_info):
         pass
 
@@ -277,7 +282,7 @@ class DuckDBWarehouse(AbstractWarehouse):
         """Updates the captured_tables table with the time the last CDC operation ran."""
         where_clause = f"WHERE table_name = '{table_info["table"]}' and schema_name = '{table_info["schema"]}'"
         self.connection.execute(f"UPDATE {self.get_change_tracking_schema_full_name()}.captured_tables SET updated_at = current_timestamp {where_clause};")
-        print('executed')
+
     def get_primary_keys(self, table_info):
         """Gets the primary keys for a specific table."""
         captured_tables = f"{self.get_change_tracking_schema_full_name()}.captured_tables"

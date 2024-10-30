@@ -10,6 +10,7 @@ source:
   change_tracking_database: melchi_cdc_db
   change_tracking_schema: streams
   replace_existing: true
+  batch_size: 10000 #optional, default is 10000
 
 target:
   type: duckdb

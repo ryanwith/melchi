@@ -13,6 +13,7 @@ source:
   replace_existing: true
   data_generation_role: data_generation_role
   melchi_role: workhorse
+  batch_size: 2
 
 target:
   type: duckdb
