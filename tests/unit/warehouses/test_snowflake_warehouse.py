@@ -21,7 +21,8 @@ class TestSnowflakeWarehouse:
             "change_tracking_database": "test_cdc_db",
             "change_tracking_schema": "test_cdc_schema",
             "cdc_strategy": "cdc_streams",
-            "warehouse_role": "SOURCE"
+            "warehouse_role": "SOURCE",
+            "replace_existing": False
         }
         return SnowflakeWarehouse(config)
     
@@ -162,16 +163,16 @@ class TestSnowflakeWarehouse:
         }
         assert snowflake_source_warehouse.get_full_table_name(table_info) == "test_db.test_schema.test_table"
 
-    def test_replace_existing_tables(self, snowflake_source_warehouse):
+    def test_replace_existing(self, snowflake_source_warehouse):
         """Test that replace tables defaults to false.  Test that it works appropriately when set."""
         # Test with default config
-        assert snowflake_source_warehouse.replace_existing_tables() == False
+        assert snowflake_source_warehouse.replace_existing() == False
         
         # Test with explicit config
         snowflake_source_warehouse.config["replace_existing"] = True
-        assert snowflake_source_warehouse.replace_existing_tables() == True
+        assert snowflake_source_warehouse.replace_existing() == True
         snowflake_source_warehouse.config["replace_existing"] = False
-        assert snowflake_source_warehouse.replace_existing_tables() == False
+        assert snowflake_source_warehouse.replace_existing() == False
 
     # Change Tracking Tests
     def test_get_change_tracking_schema_full_name(self, snowflake_source_warehouse):

@@ -10,7 +10,6 @@ source:
   change_tracking_database: cdc_metadata_tables
   change_tracking_schema: melchi_metadata
   role: ${TEST_SNOWFLAKE_ROLE}
-  replace_existing: true
   data_generation_role: data_generation_role
   melchi_role: workhorse
 
@@ -18,7 +17,6 @@ target:
   type: duckdb
   database: ${DUCKDB_DATABASE_PATH}
   change_tracking_schema: cdc_schema
-  replace_existing: true
 
 tables_config:
   path: "tests/config/tables_to_transfer.csv"

@@ -81,12 +81,8 @@ class SnowflakeWarehouse(AbstractWarehouse):
         table = table_info["table"]
         return f"{database}.{schema}.{table}"
     
-    def replace_existing_tables(self):
-        replace_existing = self.config.get("replace_existing", False)
-        if replace_existing == True:
-            return True
-        else:
-            return False
+    def replace_existing(self):
+        return self.config["replace_existing"]
 
     def format_schema_row(self, row):
         # input: row of the schema as provided in a cursor
@@ -152,7 +148,7 @@ class SnowflakeWarehouse(AbstractWarehouse):
         cdc_type = table_info["cdc_type"]
         append_only_statement = f"APPEND_ONLY = {"TRUE" if cdc_type == "APPEND_ONLY_STREAM" else "FALSE"}"
         stream_processing_table = f"{stream_name}_processing"
-        if self.replace_existing_tables() == True:
+        if self.replace_existing() == True:
             create_query = f"CREATE OR REPLACE TABLE {stream_processing_table} LIKE {table_name};"
             create_stream_query = f"CREATE OR REPLACE STREAM {stream_name} ON TABLE {table_name} SHOW_INITIAL_ROWS = true {append_only_statement}"
         else:

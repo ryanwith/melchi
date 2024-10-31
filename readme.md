@@ -18,6 +18,73 @@ Once set up, simply run the `sync_data` command whenever you need to update. Mel
 
 All you need to do is set up a role in Snowflake with the appropriate permissions. Melchi handles the rest, providing a low-maintenance, efficient solution for keeping your DuckDB instance in sync with Snowflake.
 
+## CDC Types
+
+Melchi supports three different Change Data Capture (CDC) strategies that can be specified for each table in your `tables_to_transfer.csv` file. All strategies provide transactional consistency - the key differences are in how changes are detected and synchronized.
+
+### Full Refresh (`full_refresh`)
+- **How it works**: Completely drops and recreates the target table during each sync
+- **Best for**:
+ - Small lookup tables (< 100k rows)
+ - Tables where change tracking setup in Snowflake is not desired
+ - Testing and initial setup
+- **Advantages**:
+ - Simplest to set up - no change tracking required
+ - Works with all column types including GEOGRAPHY and GEOMETRY
+- **Disadvantages**:
+ - Resource intensive for large tables
+ - Higher latency as entire table must be transferred
+ - Higher costs due to full data scanning
+- **Example use case**: A small configuration table that changes completely several times a day
+
+### Standard Stream (`standard_stream`)
+- **How it works**: Uses Snowflake's standard streams to capture all changes (inserts, updates, and deletes)
+- **Best for**:
+ - Large tables with frequent changes
+ - Tables needing update and delete tracking
+- **Advantages**:
+ - Efficient for large tables with moderate change volumes
+ - Captures all types of changes (inserts, updates, deletes)
+- **Disadvantages**:
+ - Cannot be used with GEOGRAPHY or GEOMETRY columns (Snowflake limitation)
+ - Requires a Snowflake role with permissions to create tables and streams in the CDC schema
+- **Example use case**: A customer table where records are frequently updated and occasionally deleted
+
+### Append-Only Stream (`append_only_stream`)
+- **How it works**: Uses Snowflake's append-only streams to capture only new records
+- **Best for**:
+ - Tables that have only inserts such as log tables, event data, and time-series data
+ - Tables with GEOGRAPHY or GEOMETRY columns that need streaming
+- **Advantages**:
+ - Most efficient for append-only patterns
+ - Works with all column types including GEOGRAPHY and GEOMETRY
+- **Disadvantages**:
+ - Cannot capture updates or deletes
+ - Requires a Snowflake role with permissions to create tables and streams in the CDC schema
+- **Example use case**: An event logging table where records are only ever inserted
+
+### Choosing the Right CDC Type
+
+1. Start with these questions:
+  - Does your table contain GEOGRAPHY or GEOMETRY columns?
+    - If yes: Use `append_only_stream` or `full_refresh`
+  - Is your table append-only?
+    - If yes: Use `append_only_stream`
+  - Do you need to track updates and deletes?
+    - If yes: Use `standard_stream`
+  - Is your table small (< 100k rows)?
+    - If yes: Consider `full_refresh`
+
+2. Consider your data patterns:
+  - High update frequency → `standard_stream`
+  - Insert-only patterns → `append_only_stream`
+  - Small reference tables → `full_refresh`
+
+3. Consider your resources:
+  - Limited Snowflake compute → Avoid `full_refresh` for large tables
+  - Need minimal latency → Use streams (`standard_stream` or `append_only_stream`)
+  - Limited setup time → Start with `full_refresh`
+
 ## Installation  📥
 
 ### Prerequisites
@@ -79,7 +146,42 @@ For more detailed troubleshooting, please refer to our [documentation](link_to_d
 
 ## Usage
 
-[Add usage instructions here]
+### Command Line Arguments
+
+- `action`: Required. One of:
+  - `setup`: Sets up CDC tracking and creates target tables
+  - `sync_data`: Syncs data from source to target
+  - `generate_source_sql`: Generates SQL needed for source setup
+- `--config`: Optional. Path to configuration file (default: 'config/config.yaml')
+- `--output`: Optional. Output directory for generated SQL (default: 'output')
+- `--replace_existing`: Optional. When used with `setup`, drops and recreates existing CDC tracking objects and target tables. Use with caution in production.
+
+#### Examples:
+
+```bash
+# Initial setup
+python main.py setup --config config/config.yaml
+
+# Add new tables to track.  This sets up CDC for any new tables you add to the table transfer file while not touching existing tables.
+python main.py setup --config config/config.yaml
+
+# Setup with replacement of existing objects.  This completely recreates all CDC tracking objects and tables in the source and target.
+python main.py setup --config config/config.yaml --replace_existing
+
+# Regular data sync
+python main.py sync_data --config config/config.yaml
+
+# Generate source SQL
+python main.py generate_source_sql --config config/config.yaml
+```
+
+The `--replace_existing` flag is particularly useful when:
+- Changing CDC types for existing tables
+- Resetting CDC tracking after schema changes
+- Testing different configurations
+- Recovering from certain error states
+
+**Warning**: Using `--replace_existing` will drop and recreate all existing CDC tracking objects and tables in the source and target.  It will also recreate all tables in the target.  Use with caution in production.
 
 ## Configuration
 
@@ -267,53 +369,20 @@ By following these steps and best practices, you'll be able to efficiently manag
 
 Melchi uses a combination of Snowflake's change tracking features and custom metadata tables to efficiently synchronize data from Snowflake to DuckDB. Here's a detailed explanation of how it works:
 
-### CDC Strategies
+### Setting up your environments
 
-Melchi supports three different CDC (Change Data Capture) strategies that you can specify for each table in your `tables_to_transfer.csv` file:
+When you run the `setup` command, Melchi creates CDC tables in your source (as necessary) and target.  Additionally, it creates tables with the matching schema in your target
 
-1. **Full Refresh** (`full_refresh`)
-   - Simplest strategy - drops and recreates the DuckDB table during each sync
-   - Best for:
-     - Initial testing and setup
-     - Small lookup tables
-     - When you want to avoid setting up change tracking in Snowflake
-   - Trade-off: Resource-intensive for large tables due to complete reload
+#### 1. Snowflake Setup
 
-2. **Standard Stream** (`standard_stream`)
-   - Uses Snowflake's standard streams to capture all changes (inserts, updates, and deletes)
-   - Best for:
-     - Large tables where full refresh would be inefficient
-     - Data requiring complete change history (inserts, updates, deletes)
-     - Tables with frequent modifications
-   - Limitations:
-     - Cannot be used with tables containing geography or geometry columns
-     - Requires change tracking setup in Snowflake
+Melchi creates two components in Snowflake for each table that uses streams:
 
-3. **Append-Only Stream** (`append_only_stream`)
-   - Uses Snowflake's append-only streams to capture only new records
-   - Best for:
-     - Log tables
-     - Event data
-     - Any table where records are only inserted, never updated or deleted
-   - Most efficient option for append-only data patterns
-
-### Setup Process
-
-#### 1. Snowflake Setup (for `standard_stream` and `append_only_stream` tables)
-
-When you run the `setup` command, Melchi creates three components in Snowflake for each table:
-
-1. **Change Tracking**: Enables change tracking on the source table
-   ```sql
-   ALTER TABLE your_db.your_schema.your_table SET CHANGE_TRACKING = TRUE;
-   ```
-
-2. **Stream**: Creates a stream to capture changes
+1. **Stream**: Creates a stream to capture changes
    ```sql
    CREATE STREAM your_db.change_tracking_schema.stream_your_table ON TABLE your_db.your_schema.your_table;
    ```
 
-3. **Processing Table**: Creates a staging area for captured changes
+2. **Processing Table**: Creates a staging area for captured changes
    ```sql
    CREATE TABLE your_db.change_tracking_schema.stream_your_table_processing LIKE your_db.your_schema.your_table;
    ```

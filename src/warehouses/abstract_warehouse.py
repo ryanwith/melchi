@@ -65,7 +65,7 @@ class AbstractWarehouse(ABC):
         pass    
 
     @abstractmethod
-    def replace_existing_tables(self):
+    def replace_existing(self):
         pass
 
 

@@ -85,8 +85,10 @@ def test_get_full_table_name(warehouse):
     expected = "test_schema.test_table"
     assert warehouse.get_full_table_name(table_info) == expected
 
-def test_replace_existing_tables(warehouse):
-    assert warehouse.replace_existing_tables() == True
+def test_replace_existing(warehouse):
+    assert warehouse.replace_existing() == True
+    warehouse.config["replace_existing"] = False
+    assert warehouse.replace_existing() == False
 
 def test_format_schema_row(warehouse):
     input_row = ('col_id', 'col_name', 'INTEGER', 'TRUE', 'NULL', 'TRUE')

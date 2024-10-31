@@ -62,7 +62,7 @@ class DuckDBWarehouse(AbstractWarehouse):
         Creates table with target_schema and adds melchi_id if no primary keys.
         Updates metadata tables with table info and source columns.
         """
-        if self.replace_existing_tables() == False and self.table_exists(table_info) == True:
+        if self.replace_existing() == False and self.table_exists(table_info) == True:
             return
         
         primary_keys = []
@@ -134,13 +134,9 @@ class DuckDBWarehouse(AbstractWarehouse):
         """Returns fully qualified table name."""
         return f"{table_info["schema"]}.{table_info["table"]}"
 
-    def replace_existing_tables(self):
+    def replace_existing(self):
         """Returns whether existing tables should be replaced."""
-        replace_existing = self.config.get("replace_existing", False)
-        if replace_existing == True:
-            return True
-        else:
-            return False
+        return self.config["replace_existing"]
 
     def format_schema_row(self, row):
         """Formats a column for a schema."""
@@ -154,7 +150,7 @@ class DuckDBWarehouse(AbstractWarehouse):
 
     def generate_create_table_statement(self, table_info, schema):
         """Generates SQL statement for table creation."""
-        if self.replace_existing_tables() == True:
+        if self.replace_existing() == True:
             create_statement = f"CREATE OR REPLACE TABLE {self.get_full_table_name(table_info)} "
         else:
             create_statement = f"CREATE TABLE IF NOT EXISTS {self.get_full_table_name(table_info)} "
@@ -192,7 +188,7 @@ class DuckDBWarehouse(AbstractWarehouse):
     def setup_target_environment(self):
         """Creates metadata tables for CDC tracking and source schema information."""
         self.connection.execute(f"CREATE SCHEMA IF NOT EXISTS {self.get_change_tracking_schema_full_name()};")
-        if self.replace_existing_tables() == True:
+        if self.replace_existing() == True:
             beginning_of_query = "CREATE OR REPLACE TABLE"
         else:
             beginning_of_query = "CREATE TABLE IF NOT EXISTS"
