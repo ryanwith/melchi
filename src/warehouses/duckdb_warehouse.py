@@ -62,7 +62,9 @@ class DuckDBWarehouse(AbstractWarehouse):
         Creates table with target_schema and adds melchi_id if no primary keys.
         Updates metadata tables with table info and source columns.
         """
-        print(table_info)
+        if self.replace_existing_tables() == False and self.table_exists(table_info) == True:
+            return
+        
         primary_keys = []
         cdc_type = get_cdc_type(table_info)
 
@@ -119,6 +121,8 @@ class DuckDBWarehouse(AbstractWarehouse):
         
         # Separate the queries into two distinct statements
         update_logs = [
+            f"""DELETE FROM {self.get_change_tracking_schema_full_name()}.captured_tables WHERE schema_name = '{table_info["schema"]}' and table_name = '{table_info["table"]}';""",
+            f"""DELETE FROM {self.get_change_tracking_schema_full_name()}.source_columns WHERE schema_name = '{table_info["schema"]}' and table_name = '{table_info["table"]}';""",
             f"""INSERT INTO {self.get_change_tracking_schema_full_name()}.captured_tables VALUES ('{table_info["schema"]}', '{table_info["table"]}', '{current_timestamp}', '{current_timestamp}', {primary_key_clause}, '{cdc_type}');""",
             f"""INSERT INTO {self.get_change_tracking_schema_full_name()}.source_columns VALUES {(", ").join(source_columns)};"""
         ]
@@ -161,9 +165,6 @@ class DuckDBWarehouse(AbstractWarehouse):
             column_statements.append(column_statement)
         full_create_statement = f"{create_statement}({", ".join(column_statements)});"
 
-        # # installs and loads spatial extension if that's required for the table
-        # if self.contains_spatial(schema):
-        #     return f"INSTALL spatial;\nLOAD spatial;\n{full_create_statement}"
         return full_create_statement
 
     def contains_spatial(self, schema):
@@ -390,10 +391,6 @@ class DuckDBWarehouse(AbstractWarehouse):
         for col in binary_columns:
             df[col] = df[col].apply(lambda x: x[10:-1].replace("\\'", "'") if isinstance(x, str) and len(x) > 11 else x)
 
-    # for col in binary_columns:
-    #     # Replace escaped single quotes with unescaped ones in binary string representations
-    #     df[col] = df[col].apply(lambda x: x.replace("\\'", "'") if isinstance(x, str) else x)
-
         return df
 
     # UTILITY METHODS
@@ -434,3 +431,10 @@ class DuckDBWarehouse(AbstractWarehouse):
         geom_type = parts[0].strip()
         coordinates = parts[1]
         return f"{geom_type}({coordinates}"
+    
+    def table_exists(self, table_info):
+        table = table_info["table"]
+        schema = table_info["schema"]
+        query = f"SELECT * FROM information_schema.tables WHERE table_schema = '{schema}' AND table_name = '{table}'"
+        results = self.connection.execute(query).fetchone()
+        return True if results else False
