@@ -149,16 +149,15 @@ def test_create_table_standard_stream_with_primary_keys_replace_existing(warehou
             
             expected_calls = [
                 f"CREATE SCHEMA IF NOT EXISTS {table_info['schema']};",
-                
                 f"CREATE OR REPLACE TABLE {table_info['schema']}.{table_info['table']} (id INTEGER NOT NULL, name VARCHAR);",
-                
+                f"""DELETE FROM {warehouse.get_change_tracking_schema_full_name()}.captured_tables WHERE table_name = '{table_info["schema"]}' and table_name = '{table_info["table"]}';""",
+                f"""DELETE FROM {warehouse.get_change_tracking_schema_full_name()}.source_columns WHERE table_schema = '{table_info["schema"]}' and table_name = '{table_info["table"]}';""", 
                 f"""INSERT INTO {warehouse.get_change_tracking_schema_full_name()}.captured_tables VALUES ('test_schema', 'test_table', '2024-10-23 17:06:55', '2024-10-23 17:06:55', ['id'], '{cdc_type}');""",
-                
                 f"""INSERT INTO {warehouse.get_change_tracking_schema_full_name()}.source_columns VALUES ( 'test_db', 'test_schema', 'test_table', 'id', 'INTEGER', NULL, FALSE, TRUE ),
                 ( 'test_db', 'test_schema', 'test_table', 'name', 'VARCHAR', NULL, TRUE, FALSE );"""
             ]
             
-            assert mock_execute.call_count == 4
+            assert mock_execute.call_count == 6
             for i, (expected, actual) in enumerate(zip(expected_calls, mock_execute.call_args_list)):
                 expected_sql = normalize_sql(expected)
                 actual_sql = normalize_sql(actual[0][0])  # Fix is here
@@ -203,6 +202,8 @@ def test_create_table_standard_stream_no_primary_keys_replace_existing(warehouse
                 f"CREATE SCHEMA IF NOT EXISTS {table_info['schema']};",
                 
                 f"CREATE OR REPLACE TABLE {table_info['schema']}.{table_info['table']} (id INTEGER NOT NULL, name VARCHAR, MELCHI_ROW_ID VARCHAR NOT NULL);",
+                f"""DELETE FROM {warehouse.get_change_tracking_schema_full_name()}.captured_tables WHERE table_name = '{table_info["schema"]}' and table_name = '{table_info["table"]}';""",
+                f"""DELETE FROM {warehouse.get_change_tracking_schema_full_name()}.source_columns WHERE table_schema = '{table_info["schema"]}' and table_name = '{table_info["table"]}';""", 
                 
                 f"""INSERT INTO {warehouse.get_change_tracking_schema_full_name()}.captured_tables VALUES ('test_schema', 'test_table', '2024-10-23 17:06:55', '2024-10-23 17:06:55', ['MELCHI_ROW_ID'], '{cdc_type}');""",
                 
@@ -210,7 +211,7 @@ def test_create_table_standard_stream_no_primary_keys_replace_existing(warehouse
                 ( 'test_db', 'test_schema', 'test_table', 'name', 'VARCHAR', NULL, TRUE, FALSE );"""
             ]
             
-            assert mock_execute.call_count == 4
+            assert mock_execute.call_count == 6
             for i, (expected, actual) in enumerate(zip(expected_calls, mock_execute.call_args_list)):
                 expected_sql = normalize_sql(expected)
                 actual_sql = normalize_sql(actual[0][0])  # Fix is here
@@ -255,6 +256,8 @@ def test_create_table_non_standard_stream_with_primary_keys_replace_existing(war
                 f"CREATE SCHEMA IF NOT EXISTS {table_info['schema']};",
                 
                 f"CREATE OR REPLACE TABLE {table_info['schema']}.{table_info['table']} (id INTEGER NOT NULL, name VARCHAR);",
+                f"""DELETE FROM {warehouse.get_change_tracking_schema_full_name()}.captured_tables WHERE table_name = '{table_info["schema"]}' and table_name = '{table_info["table"]}';""",
+                f"""DELETE FROM {warehouse.get_change_tracking_schema_full_name()}.source_columns WHERE table_schema = '{table_info["schema"]}' and table_name = '{table_info["table"]}';""", 
                 
                 f"""INSERT INTO {warehouse.get_change_tracking_schema_full_name()}.captured_tables VALUES ('test_schema', 'test_table', '2024-10-23 17:06:55', '2024-10-23 17:06:55', ['id'], '{cdc_type}');""",
                 
@@ -262,7 +265,7 @@ def test_create_table_non_standard_stream_with_primary_keys_replace_existing(war
                 ( 'test_db', 'test_schema', 'test_table', 'name', 'VARCHAR', NULL, TRUE, FALSE );"""
             ]
             
-            assert mock_execute.call_count == 4
+            assert mock_execute.call_count == 6
             for i, (expected, actual) in enumerate(zip(expected_calls, mock_execute.call_args_list)):
                 expected_sql = normalize_sql(expected)
                 actual_sql = normalize_sql(actual[0][0])  # Fix is here
@@ -296,18 +299,10 @@ def test_create_table_standard_stream_without_primary_keys_no_replace_existing(w
         
         expected_calls = [
             # Create schema
-            f"CREATE SCHEMA IF NOT EXISTS {table_info['schema']};",
-            
-            # Create table with auto-generated primary key
-            f"""CREATE TABLE IF NOT EXISTS {table_info['schema']}.{table_info['table']} (name VARCHAR, MELCHI_ROW_ID VARCHAR NOT NULL);""",
-            
-            # Insert metadata with auto-generated primary key
-            f"""INSERT INTO {warehouse.get_change_tracking_schema_full_name()}.captured_tables VALUES ('test_schema', 'test_table', '{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}', '{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}', ['MELCHI_ROW_ID'], 'STANDARD_STREAM');""",
-            
-            f"""INSERT INTO {warehouse.get_change_tracking_schema_full_name()}.source_columns VALUES ( 'test_db', 'test_schema', 'test_table', 'name', 'VARCHAR', NULL, TRUE, FALSE );"""
-        ]
+            "SELECT * FROM information_schema.tables WHERE table_schema = 'test_schema' AND table_name = 'test_table'"
+            ]
         
-        assert mock_execute.call_count == 4
+        assert mock_execute.call_count == 1
         for i, (expected, actual) in enumerate(zip(expected_calls, mock_execute.call_args_list)):
             expected_sql = normalize_sql(expected)
             actual_sql = normalize_sql(actual[0][0])
@@ -350,6 +345,8 @@ def test_create_table_with_default_values(warehouse):
             
             # Create table with default values
             f"""CREATE OR REPLACE TABLE {table_info['schema']}.{table_info['table']} (id INTEGER NOT NULL, status VARCHAR);""".strip(),
+            f"""DELETE FROM {warehouse.get_change_tracking_schema_full_name()}.captured_tables WHERE table_name = '{table_info["schema"]}' and table_name = '{table_info["table"]}';""",
+            f"""DELETE FROM {warehouse.get_change_tracking_schema_full_name()}.source_columns WHERE table_schema = '{table_info["schema"]}' and table_name = '{table_info["table"]}';""", 
             
             # Insert metadata
             f"""INSERT INTO {warehouse.get_change_tracking_schema_full_name()}.captured_tables VALUES ('test_schema', 'test_table', '{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}', '{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}', ['id'], 'APPEND_ONLY_STREAM');""",
@@ -360,7 +357,7 @@ def test_create_table_with_default_values(warehouse):
             """.strip()
         ]
         
-        assert mock_execute.call_count == 4
+        assert mock_execute.call_count == 6
         actual_calls = [call[0][0].strip() for call in mock_execute.call_args_list]
         for expected, actual in zip(expected_calls, actual_calls):
             assert normalize_sql(expected) == normalize_sql(actual)

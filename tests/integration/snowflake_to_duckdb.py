@@ -38,6 +38,13 @@ def test_config():
     # Load your test configuration
     return Config(config_path='tests/config/snowflake_to_duckdb.yaml')
 
+@pytest.fixture
+def test_config_no_replace_existing():
+    config = Config(config_path='tests/config/snowflake_to_duckdb.yaml')
+    config.target_config["replace_existing"] = False
+    config.source_config["replace_existing"] = False
+    return config
+
 def recreate_roles(test_config):
     source_warehouse = WarehouseFactory.create_warehouse(test_config.source_type, test_config.source_config)
     role = source_warehouse.config["role"]
@@ -393,6 +400,42 @@ def confirm_append_only_stream_sync(test_config):
         source_warehouse.disconnect()
         target_warehouse.disconnect()
 
+def drop_target_tables(test_config):
+    target_warehouse = WarehouseFactory.create_warehouse(test_config.target_type, test_config.target_config)
+    target_warehouse.connect()
+    try:
+        target_warehouse.begin_transaction()
+        for table in get_test_tables():
+            if table.get("replace_later", False):
+                target_warehouse.execute_query(f"DROP TABLE IF EXISTS {target_warehouse.get_full_table_name(table['table_info'])}")
+        target_warehouse.commit_transaction()
+    except Exception as e:
+        target_warehouse.rollback_transaction()
+        print(f"Error dropping target tables: {e}")
+        raise
+    finally:
+        target_warehouse.disconnect()
+
+def drop_source_cdc_objects(test_config):
+    source_warehouse = WarehouseFactory.create_warehouse(test_config.source_type, test_config.source_config)
+    source_warehouse.connect()
+    try:
+        source_warehouse.begin_transaction()
+        for table in get_test_tables():
+            if table.get("replace_later", False):
+                print(f"Dropping stream and processing table for {table['table_info']}")
+                stream_name = source_warehouse.get_stream_name(table["table_info"])
+                stream_processing_table_name = source_warehouse.get_stream_processing_table_name(table["table_info"])
+                source_warehouse.execute_query(f"DROP STREAM IF EXISTS {stream_name};")
+                source_warehouse.execute_query(f"DROP TABLE IF EXISTS {stream_processing_table_name};")
+        source_warehouse.commit_transaction()
+    except Exception as e:
+        source_warehouse.rollback_transaction()
+        print(f"Error dropping source tables: {e}")
+        raise
+    finally:
+        source_warehouse.disconnect()
+
 def confirm_syncs(test_config):
     source_warehouse = WarehouseFactory.create_warehouse(test_config.source_type, test_config.source_config)
     target_warehouse = WarehouseFactory.create_warehouse(test_config.target_type, test_config.target_config)
@@ -473,6 +516,16 @@ def test_append_only_stream_consistency(test_config, request):
     if request.session.testsfailed:
         pytest.skip("Skipping as previous tests failed")
     confirm_append_only_stream_sync(test_config)
+
+@pytest.mark.depends(on=['test_append_only_stream_consistency'])
+def test_replace_existing_tables_without_new_data(test_config, test_config_no_replace_existing, request):
+    if request.session.testsfailed:
+        pytest.skip("Skipping as previous tests failed")
+    drop_target_tables(test_config)
+    drop_source_cdc_objects(test_config)
+    setup_source(test_config_no_replace_existing)
+    transfer_schema(test_config_no_replace_existing)
+    sync_data(test_config_no_replace_existing)
 
 # pytest tests/integration/snowflake_to_duckdb.py -vv -s -k "test_prep"
 # pytest tests/integration/snowflake_to_duckdb.py -vv -s -k "test_setup_source"

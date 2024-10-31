@@ -121,8 +121,8 @@ class DuckDBWarehouse(AbstractWarehouse):
         
         # Separate the queries into two distinct statements
         update_logs = [
-            f"""DELETE FROM {self.get_change_tracking_schema_full_name()}.captured_tables WHERE schema_name = '{table_info["schema"]}' and table_name = '{table_info["table"]}';""",
-            f"""DELETE FROM {self.get_change_tracking_schema_full_name()}.source_columns WHERE schema_name = '{table_info["schema"]}' and table_name = '{table_info["table"]}';""",
+            f"""DELETE FROM {self.get_change_tracking_schema_full_name()}.captured_tables WHERE table_name = '{table_info["schema"]}' and table_name = '{table_info["table"]}';""",
+            f"""DELETE FROM {self.get_change_tracking_schema_full_name()}.source_columns WHERE table_schema = '{table_info["schema"]}' and table_name = '{table_info["table"]}';""",
             f"""INSERT INTO {self.get_change_tracking_schema_full_name()}.captured_tables VALUES ('{table_info["schema"]}', '{table_info["table"]}', '{current_timestamp}', '{current_timestamp}', {primary_key_clause}, '{cdc_type}');""",
             f"""INSERT INTO {self.get_change_tracking_schema_full_name()}.source_columns VALUES {(", ").join(source_columns)};"""
         ]
