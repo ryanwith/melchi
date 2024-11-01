@@ -394,6 +394,8 @@ For all CDC strategies, Melchi:
 2. Sets up metadata tables to track synchronization status
 3. For tables without primary keys, adds a `melchi_row_id` column to uniquely identify rows
 
+If you run setup with the `--replace_existing` attribute, all CDC objects in your source are replaced, all CDC data in your target is dropped, and all tables are recreated. 
+
 ### Synchronization Process
 
 When you run `sync_data`, Melchi handles each table according to its CDC strategy:

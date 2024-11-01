@@ -22,6 +22,7 @@ import os
 from dotenv import load_dotenv
 from pprint import pp
 from src.utils.table_config import get_cdc_type
+import subprocess
 
 load_dotenv()
 
@@ -460,33 +461,75 @@ def test_prep(test_config):
     print("Inserting generated data")
     insert_generated_data(test_config, seed_values()['initial_seed_rows'])
 
+# @pytest.mark.depends(on=['test_prep'])
+# def test_setup_source(test_config, request):
+#     """Depends on successful database seeding"""
+#     if request.session.testsfailed:
+#         pytest.skip("Skipping as previous tests failed")
+#     setup_source(test_config)
+
+# @pytest.mark.depends(on=['test_setup_source'])
+# def test_transfer_schema(test_config, request):
+#     """Depends on successful source setup"""
+#     if request.session.testsfailed:
+#         pytest.skip("Skipping as previous tests failed")
+#     transfer_schema(test_config)
+
 @pytest.mark.depends(on=['test_prep'])
-def test_setup_source(test_config, request):
+def test_initial_setup(test_config, request):
     """Depends on successful database seeding"""
     if request.session.testsfailed:
         pytest.skip("Skipping as previous tests failed")
-    setup_source(test_config)
+    
+    result = subprocess.run(
+        ["python3", "main.py", "setup", "--config", "tests/config/snowflake_to_duckdb.yaml", "--replace-existing"], 
+        capture_output=True,
+        text=True
+    )
+    
+    assert result.returncode == 0, f"Setup command failed with output:\nstdout: {result.stdout}\nstderr: {result.stderr}"
 
-@pytest.mark.depends(on=['test_setup_source'])
-def test_transfer_schema(test_config, request):
-    """Depends on successful source setup"""
-    if request.session.testsfailed:
-        pytest.skip("Skipping as previous tests failed")
-    transfer_schema(test_config)
-
-@pytest.mark.depends(on=['test_transfer_schema'])
+@pytest.mark.depends(on=['test_initial_setup'])
 def test_initial_data_sync(test_config, request):
-    """Depends on successful schema transfer"""
+    """Depends on successful setup"""
     if request.session.testsfailed:
         pytest.skip("Skipping as previous tests failed")
-    sync_data(test_config)
+    
+    result = subprocess.run(
+        ["python3", "main.py", "sync_data", "--config", "tests/config/snowflake_to_duckdb.yaml"],
+        capture_output=True,
+        text=True
+    )
+    
+    assert result.returncode == 0, f"Data sync failed with output:\nstdout: {result.stdout}\nstderr: {result.stderr}"
 
 @pytest.mark.depends(on=['test_initial_data_sync'])
 def test_run_cdc_no_changes(test_config, request):
     """Depends on successful initial data sync"""
     if request.session.testsfailed:
         pytest.skip("Skipping as previous tests failed")
-    sync_data(test_config)  
+    
+    result = subprocess.run(
+        ["python3", "main.py", "sync_data", "--config", "tests/config/snowflake_to_duckdb.yaml"],
+        capture_output=True,
+        text=True
+    )
+    
+    assert result.returncode == 0, f"CDC sync failed with output:\nstdout: {result.stdout}\nstderr: {result.stderr}"
+
+# @pytest.mark.depends(on=['test_initial_setup'])
+# def test_initial_data_sync(test_config, request):
+#     """Depends on successful schema transfer"""
+#     if request.session.testsfailed:
+#         pytest.skip("Skipping as previous tests failed")
+#     sync_data(test_config)
+
+# @pytest.mark.depends(on=['test_initial_data_sync'])
+# def test_run_cdc_no_changes(test_config, request):
+#     """Depends on successful initial data sync"""
+#     if request.session.testsfailed:
+#         pytest.skip("Skipping as previous tests failed")
+#     sync_data(test_config)  
 
 @pytest.mark.depends(on=['test_run_cdc_no_changes'])
 def test_update_source_records(test_config, request):
@@ -503,7 +546,14 @@ def test_run_cdc_with_changes(test_config, request):
     """Depends on successful initial data sync"""
     if request.session.testsfailed:
         pytest.skip("Skipping as previous tests failed")
-    sync_data(test_config)    
+    
+    result = subprocess.run(
+        ["python3", "main.py", "sync_data", "--config", "tests/config/snowflake_to_duckdb.yaml"],
+        capture_output=True,
+        text=True
+    )
+    
+    assert result.returncode == 0, f"CDC sync failed with output:\nstdout: {result.stdout}\nstderr: {result.stderr}"
 
 @pytest.mark.depends(on=['test_run_cdc_with_changes'])
 def test_full_sync_consistency(test_config, request):
@@ -518,15 +568,30 @@ def test_append_only_stream_consistency(test_config, request):
     confirm_append_only_stream_sync(test_config)
 
 @pytest.mark.depends(on=['test_append_only_stream_consistency'])
-def test_replace_existing_tables_without_new_data(test_config, test_config_no_replace_existing, request):
+def test_add_tables_while_keeping_some(test_config, request):
     if request.session.testsfailed:
         pytest.skip("Skipping as previous tests failed")
     drop_target_tables(test_config)
     drop_source_cdc_objects(test_config)
-    setup_source(test_config_no_replace_existing)
-    transfer_schema(test_config_no_replace_existing)
-    sync_data(test_config_no_replace_existing)
 
+    setup_result = subprocess.run(
+        ["python3", "main.py", "setup", "--config", "tests/config/snowflake_to_duckdb.yaml", "--replace-existing"], 
+        capture_output=True,
+        text=True
+    )
+    
+    assert setup_result.returncode == 0, f"Setup command failed with output:\nstdout: {setup_result.stdout}\nstderr: {setup_result.stderr}"
+
+    sync_result = subprocess.run(
+        ["python3", "main.py", "sync_data", "--config", "tests/config/snowflake_to_duckdb.yaml"],
+        capture_output=True,
+        text=True
+    )
+    
+    assert sync_result.returncode == 0, f"Data sync failed with output:\nstdout: {sync_result.stdout}\nstderr: {sync_result.stderr}"
+
+    confirm_full_sync(test_config)
+    confirm_append_only_stream_sync(test_config)
 # pytest tests/integration/snowflake_to_duckdb.py -vv -s -k "test_prep"
 # pytest tests/integration/snowflake_to_duckdb.py -vv -s -k "test_setup_source"
 # pytest tests/integration/snowflake_to_duckdb.py -vv -s -k "test_transfer_schema"

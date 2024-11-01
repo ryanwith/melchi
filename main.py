@@ -12,11 +12,13 @@ def main():
     parser.add_argument("action", choices=["setup", "sync_data", "generate_source_sql"], help="Action to perform")
     parser.add_argument("--config", required=False, default='config/config.yaml', help="Path to configuration file")
     parser.add_argument("--output", required=False, default='output', help="Output directory for generated SQL")
-    
+    parser.add_argument("--replace-existing", action="store_true", help="Recreates all CDC objects in the source warehouse, all metadata objects in the target warehouse, and recreates all tables in the target warehouse")
     args = parser.parse_args()
 
     # Load configuration
     config = Config(config_path=args.config)
+    config.source_config["replace_existing"] = args.replace_existing
+    config.target_config["replace_existing"] = args.replace_existing
 
     if args.action == "setup":
         print("Setting up source for CDC")
