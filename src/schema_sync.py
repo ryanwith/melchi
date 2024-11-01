@@ -7,6 +7,7 @@ from pprint import pp
 def transfer_schema(config, tables=None):
     source_warehouse = WarehouseFactory.create_warehouse(config.source_type, config.source_config)
     target_warehouse = WarehouseFactory.create_warehouse(config.target_type, config.target_config)
+    print("SETTING UP TARGET ENVIRONMENT")
     try:
         source_warehouse.connect()
         target_warehouse.connect()

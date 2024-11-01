@@ -28,6 +28,7 @@ def main():
     elif args.action == "sync_data":
         print("Data sync started")
         sync_data(config)
+        print("Data sync complete")
     elif args.action == "generate_source_sql":
         file_location = "output" if args.output == None else args.output
         generate_source_sql(config, file_location)

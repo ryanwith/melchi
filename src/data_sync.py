@@ -5,14 +5,12 @@ from .utils.table_config import get_tables_to_transfer, get_cdc_type
 
 
 def sync_data(config):
-    print("Starting sync_data")
     source_warehouse = WarehouseFactory.create_warehouse(config.source_type, config.source_config)
     target_warehouse = WarehouseFactory.create_warehouse(config.target_type, config.target_config)
 
     try:
         source_warehouse.connect()
         target_warehouse.connect()
-        print("Connected to source and target warehouses")
 
         tables_to_transfer = get_tables_to_transfer(config)
         for table_info in tables_to_transfer:

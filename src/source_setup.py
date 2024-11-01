@@ -5,7 +5,6 @@ from .utils.table_config import get_tables_to_transfer
 
 def setup_source(config, tables_to_transfer = None):
     source_warehouse = WarehouseFactory.create_warehouse(config.source_type, config.source_config)
-
     try:
         tables_to_transfer = get_tables_to_transfer(config)
 

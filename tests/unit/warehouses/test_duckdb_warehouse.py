@@ -615,7 +615,6 @@ def test_sync_table_no_rows(warehouse):
             "TRUNCATE TABLE test_schema.full_refresh_table;",
             "UPDATE cdc_schema.captured_tables SET updated_at = current_timestamp WHERE table_name = 'full_refresh_table' and schema_name = 'test_schema';"
         ]
-        print("")
 
         for expected_sql, actual_sql in zip(expected_calls, actual_calls):
             assert expected_sql == actual_sql
