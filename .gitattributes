@@ -1,0 +1,9 @@
+* text=auto
+*.py text diff=python
+*.csv text
+*.md text
+*.txt text
+*.yaml text
+*.sql text
+*.db binary
+*.duckdb binary
