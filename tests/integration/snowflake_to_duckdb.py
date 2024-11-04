@@ -86,7 +86,7 @@ def drop_source_objects(test_config):
         source_warehouse.connect("ACCOUNTADMIN")
         source_warehouse.begin_transaction()
         # drop cdc tracking schema
-        source_warehouse.execute_query(f"GRANT ALL PRIVILEGES ON DATABASE {source_warehouse.get_change_tracking_schema_full_name().split(".")[0]} TO ROLE ACCOUNTADMIN;")
+        source_warehouse.execute_query(f"GRANT ALL PRIVILEGES ON DATABASE {source_warehouse.get_change_tracking_schema_full_name().split('.')[0]} TO ROLE ACCOUNTADMIN;")
         print(f"GRANT OWNERSHIP ON SCHEMA {source_warehouse.get_change_tracking_schema_full_name()} TO ROLE ACCOUNTADMIN;")
         try:
             source_warehouse.execute_query(f"GRANT OWNERSHIP ON SCHEMA {source_warehouse.get_change_tracking_schema_full_name()} TO ROLE ACCOUNTADMIN;")
@@ -164,7 +164,7 @@ def create_cdc_schema(test_config):
     source_warehouse = WarehouseFactory.create_warehouse(test_config.source_type, test_config.source_config)
     try:
         source_warehouse.connect("ACCOUNTADMIN")
-        source_warehouse.execute_query(f"GRANT ALL PRIVILEGES ON DATABASE {source_warehouse.get_change_tracking_schema_full_name().split(".")[0]} TO ROLE ACCOUNTADMIN;")
+        source_warehouse.execute_query(f"GRANT ALL PRIVILEGES ON DATABASE {source_warehouse.get_change_tracking_schema_full_name().split('.')[0]} TO ROLE ACCOUNTADMIN;")
         source_warehouse.execute_query(f"CREATE SCHEMA IF NOT EXISTS {source_warehouse.get_change_tracking_schema_full_name()}")
     finally:
         source_warehouse.disconnect()
