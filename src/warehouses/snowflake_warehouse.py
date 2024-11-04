@@ -331,9 +331,6 @@ class SnowflakeWarehouse(AbstractWarehouse):
             if "timestamp_tz" in col_type or "timestamp_ltz" in col_type:
                 column_expressions.append(f"TO_CHAR({col_name}, 'YYYY-MM-DD HH24:MI:SS.FF6TZH:TZM') AS {col_name}")
                 timestamp_tz_columns.append(col_name)
-            elif "binary" in col_type:  # Add binary handling
-                column_expressions.append(f"TO_VARCHAR({col_name}) AS {col_name}")
-                binary_columns.append(col_name)
             else:
                 column_expressions.append(col_name)
         
