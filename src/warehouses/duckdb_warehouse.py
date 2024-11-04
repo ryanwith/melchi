@@ -158,7 +158,7 @@ class DuckDBWarehouse(AbstractWarehouse):
             column_statement = f"{col['name']} {col['type']}"
             column_statement += " NOT NULL" if col['nullable'] == False else ""
             column_statements.append(column_statement)
-        full_create_statement = f"{create_statement}({'', ''.join(column_statements)});"
+        full_create_statement = f"{create_statement}({', '.join(column_statements)});"
 
         return full_create_statement
 
