@@ -24,7 +24,7 @@ class TypeMapper:
         elif main_type == "TIMESTAMP_NTZ":
             precision = int(type_data[1][:-1])
             return f"TIMESTAMP({precision})"
-        elif main_type in ("VARIANT", "OBJECT", "JSON", "ARRAY"):
+        elif main_type in ("VARIANT", "OBJECT", "ARRAY"):
             return "JSON"
         elif main_type == "VECTOR":
             vector_type = type_data[1].split(",")[0]
