@@ -318,7 +318,7 @@ class DuckDBWarehouse(AbstractWarehouse):
                     modified_columns.append(col_name)
             
             # Construct a new query with type casts
-            modified_query = f"SELECT {', '.join(modified_columns)} FROM ({query_text.strip(";")}) subquery"
+            modified_query = f"SELECT {', '.join(modified_columns)} FROM ({query_text.strip(';')}) subquery"
             # Execute the modified query and return as DataFrame
             df = self.connection.execute(modified_query).df()
             return df
