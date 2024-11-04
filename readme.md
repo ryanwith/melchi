@@ -126,7 +126,6 @@ Melchi supports three different Change Data Capture (CDC) strategies that can be
    SNOWFLAKE_ACCOUNT=your_account
    SNOWFLAKE_USER=your_username
    SNOWFLAKE_PASSWORD=your_password
-   DUCKDB_DATABASE_PATH=/path/to/your/duckdb/database.db
    ```
 
 6. Verify the installation:
@@ -211,7 +210,7 @@ Melchi uses a YAML configuration file to manage connections and specify which ta
      path: "path/to/your/tables_to_transfer.csv"
    ```
 
-   Replace placeholders with your actual Snowflake and DuckDB details.
+   Replace placeholders with your actual Snowflake and DuckDB details.  Additionally, the duckdb database will be created by default at runtime as long as the director you're referring to exists.
 
 3. Create a `tables_to_transfer.csv` (or other name you specify in the config) file in the `config` directory to specify which tables to replicate:
 

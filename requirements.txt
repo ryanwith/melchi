@@ -1,5 +1,5 @@
 snowflake-connector-python[pandas]==3.12.2
-pandas==1.4.3
+pandas==2.2.1
 argparse==1.4.0
 APScheduler==3.9.1
 numpy==1.26.4

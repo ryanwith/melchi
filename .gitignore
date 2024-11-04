@@ -36,8 +36,7 @@ htmlcov/
 
 /venv
 .env
-db/*
-output/
+
 tests/output
 
 /temp
