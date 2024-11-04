@@ -146,7 +146,7 @@ class SnowflakeWarehouse(AbstractWarehouse):
         stream_name = self.get_stream_name(table_info)
         table_name = f"{table_info['database']}.{table_info['schema']}.{table_info['table']}"
         cdc_type = table_info['cdc_type']
-        append_only_statement = f"APPEND_ONLY = {"TRUE" if cdc_type == "APPEND_ONLY_STREAM" else "FALSE"}"
+        append_only_statement = f"APPEND_ONLY = {'TRUE' if cdc_type == 'APPEND_ONLY_STREAM' else 'FALSE'}"
         stream_processing_table = f"{stream_name}_processing"
         if self.replace_existing() == True:
             create_query = f"CREATE OR REPLACE TABLE {stream_processing_table} LIKE {table_name};"
