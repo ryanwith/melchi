@@ -152,7 +152,7 @@ def test_create_table_standard_stream_with_primary_keys_replace_existing(warehou
             expected_calls = [
                 f"CREATE SCHEMA IF NOT EXISTS {table_info['schema']};",
                 f"CREATE OR REPLACE TABLE {table_info['schema']}.{table_info['table']} (id INTEGER NOT NULL, name VARCHAR);",
-                f"""DELETE FROM {warehouse.get_change_tracking_schema_full_name()}.captured_tables WHERE table_name = '{table_info["schema"]}' and table_name = '{table_info["table"]}';""",
+                f"""DELETE FROM {warehouse.get_change_tracking_schema_full_name()}.captured_tables WHERE schema_name = '{table_info["schema"]}' and table_name = '{table_info["table"]}';""",
                 f"""DELETE FROM {warehouse.get_change_tracking_schema_full_name()}.source_columns WHERE table_schema = '{table_info["schema"]}' and table_name = '{table_info["table"]}';""", 
                 f"""INSERT INTO {warehouse.get_change_tracking_schema_full_name()}.captured_tables VALUES ('test_schema', 'test_table', '2024-10-23 17:06:55', '2024-10-23 17:06:55', ['id'], '{cdc_type}');""",
                 f"""INSERT INTO {warehouse.get_change_tracking_schema_full_name()}.source_columns VALUES ( 'test_db', 'test_schema', 'test_table', 'id', 'INTEGER', NULL, FALSE, TRUE ),
@@ -204,7 +204,7 @@ def test_create_table_standard_stream_no_primary_keys_replace_existing(warehouse
                 f"CREATE SCHEMA IF NOT EXISTS {table_info['schema']};",
                 
                 f"CREATE OR REPLACE TABLE {table_info['schema']}.{table_info['table']} (id INTEGER NOT NULL, name VARCHAR, MELCHI_ROW_ID VARCHAR NOT NULL);",
-                f"""DELETE FROM {warehouse.get_change_tracking_schema_full_name()}.captured_tables WHERE table_name = '{table_info["schema"]}' and table_name = '{table_info["table"]}';""",
+                f"""DELETE FROM {warehouse.get_change_tracking_schema_full_name()}.captured_tables WHERE schema_name = '{table_info["schema"]}' and table_name = '{table_info["table"]}';""",
                 f"""DELETE FROM {warehouse.get_change_tracking_schema_full_name()}.source_columns WHERE table_schema = '{table_info["schema"]}' and table_name = '{table_info["table"]}';""", 
                 
                 f"""INSERT INTO {warehouse.get_change_tracking_schema_full_name()}.captured_tables VALUES ('test_schema', 'test_table', '2024-10-23 17:06:55', '2024-10-23 17:06:55', ['MELCHI_ROW_ID'], '{cdc_type}');""",
@@ -258,7 +258,7 @@ def test_create_table_non_standard_stream_with_primary_keys_replace_existing(war
                 f"CREATE SCHEMA IF NOT EXISTS {table_info['schema']};",
                 
                 f"CREATE OR REPLACE TABLE {table_info['schema']}.{table_info['table']} (id INTEGER NOT NULL, name VARCHAR);",
-                f"""DELETE FROM {warehouse.get_change_tracking_schema_full_name()}.captured_tables WHERE table_name = '{table_info["schema"]}' and table_name = '{table_info["table"]}';""",
+                f"""DELETE FROM {warehouse.get_change_tracking_schema_full_name()}.captured_tables WHERE schema_name = '{table_info["schema"]}' and table_name = '{table_info["table"]}';""",
                 f"""DELETE FROM {warehouse.get_change_tracking_schema_full_name()}.source_columns WHERE table_schema = '{table_info["schema"]}' and table_name = '{table_info["table"]}';""", 
                 
                 f"""INSERT INTO {warehouse.get_change_tracking_schema_full_name()}.captured_tables VALUES ('test_schema', 'test_table', '2024-10-23 17:06:55', '2024-10-23 17:06:55', ['id'], '{cdc_type}');""",
@@ -347,7 +347,7 @@ def test_create_table_with_default_values(warehouse):
             
             # Create table with default values
             f"""CREATE OR REPLACE TABLE {table_info['schema']}.{table_info['table']} (id INTEGER NOT NULL, status VARCHAR);""".strip(),
-            f"""DELETE FROM {warehouse.get_change_tracking_schema_full_name()}.captured_tables WHERE table_name = '{table_info["schema"]}' and table_name = '{table_info["table"]}';""",
+            f"""DELETE FROM {warehouse.get_change_tracking_schema_full_name()}.captured_tables WHERE schema_name = '{table_info["schema"]}' and table_name = '{table_info["table"]}';""",
             f"""DELETE FROM {warehouse.get_change_tracking_schema_full_name()}.source_columns WHERE table_schema = '{table_info["schema"]}' and table_name = '{table_info["table"]}';""", 
             
             # Insert metadata
