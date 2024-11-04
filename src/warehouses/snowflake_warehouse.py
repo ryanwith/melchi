@@ -114,7 +114,7 @@ class SnowflakeWarehouse(AbstractWarehouse):
 
         problems = self.find_problems(tables_to_transfer)
         if problems:
-            raise ValueError(f"The following problems were found:\n{'\n'.join(problems)}")
+            raise ValueError(f"The following problems were found:\n" + '\n'.join(problems))
 
         for table_info in tables_to_transfer:
             cdc_type = table_info.get("cdc_type", "FULL_REFRESH").upper()
