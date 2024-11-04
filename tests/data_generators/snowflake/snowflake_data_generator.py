@@ -124,7 +124,7 @@ def generate_insert_into_select_statements(table_name, data):
         formatted_values = []
         for col in row:
             formatted_values.append(format_value(col))
-        individual_statement = f"INSERT INTO {table_name} SELECT {", ".join(formatted_values)};"
+        individual_statement = f"INSERT INTO {table_name} SELECT {', '.join(formatted_values)};"
         insert_into_select_statements.append(individual_statement)
     return insert_into_select_statements
 
@@ -139,7 +139,7 @@ def format_columns_for_snowflake(type_mappings):
             pks.append(col['column_name'])
     
     if len(pks) > 0:
-        columns.append(f"PRIMARY KEY ({", ".join(pks)})")
+        columns.append(f"PRIMARY KEY ({', '.join(pks)})")
     
     return ", ".join(columns)
 
@@ -147,7 +147,7 @@ def get_random_records_sql(table_name, num, cols = []):
     if len(cols) == 0:
         cols.append("$1")
     select_query = f"""
-        SELECT {", ".join(cols)} FROM {table_name} 
+        SELECT {', '.join(cols)} FROM {table_name} 
         ORDER BY RANDOM() 
     """
     return select_query

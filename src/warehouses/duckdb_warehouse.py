@@ -398,7 +398,7 @@ class DuckDBWarehouse(AbstractWarehouse):
 
     def convert_list_to_duckdb_syntax(self, python_list):
         """Converts Python list to DuckDB array syntax."""
-        return f"[{", ".join(list(map(lambda item: f"'{item}'", python_list)))}]"
+        return f"[{', '.join(list(map(lambda item: f"'{item}'", python_list)))}]"
     
     def format_value_for_insert(self, value):
         if type(value) == str:
