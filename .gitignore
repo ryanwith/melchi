@@ -40,3 +40,6 @@ htmlcov/
 tests/output
 
 /temp
+
+/output/target_database.duckdb
+/output/source_setup.sql

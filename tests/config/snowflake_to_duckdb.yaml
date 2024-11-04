@@ -15,7 +15,7 @@ source:
 
 target:
   type: duckdb
-  database: ${DUCKDB_DATABASE_PATH}
+  database: output/target_database.duckdb
   change_tracking_schema: cdc_schema
 
 tables_config:
