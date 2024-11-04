@@ -17,8 +17,8 @@ def main():
 
     # Load configuration
     config = Config(config_path=args.config)
-    config.source_config["replace_existing"] = args.replace_existing
-    config.target_config["replace_existing"] = args.replace_existing
+    config.source_config['replace_existing'] = args.replace_existing
+    config.target_config['replace_existing'] = args.replace_existing
 
     if args.action == "setup":
         print("Setting up source for CDC")

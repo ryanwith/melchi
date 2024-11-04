@@ -90,7 +90,7 @@ def test_no_cdc_column(tmp_path, mock_config):
 def test_no_cdc_specified(tmp_path, mock_config):
     # Create test CSV with invalid CDC type
     csv_content = [
-        ['database', 'schema', 'table', "cdc_type"],
+        ['database', 'schema', 'table', 'cdc_type'],
         ['db1', 'sch1', 'tbl1']
     ]
 

@@ -122,7 +122,7 @@ class AbstractWarehouse(ABC):
         target_schema = self.get_schema(table_info)
         if mapping_method:
             for column in target_schema:
-                column["type"] = mapping_method(column["type"])
+                column['type'] = mapping_method(column['type'])
             return target_schema
         else:
             raise NotImplementedError(f"Type mapping from {self.warehouse_type} to {target_warehouse_type} is not implemented")               
@@ -132,7 +132,7 @@ class AbstractWarehouse(ABC):
         pass
 
     def warehouse_type(self):
-        return self.config["type"].upper()
+        return self.config['type'].upper()
     
     @abstractmethod
     def get_primary_keys(self, table_info):

@@ -29,8 +29,10 @@ class TestTypeMapper(unittest.TestCase):
     def test_snowflake_to_duckdb_semi_structured(self):
         semi_structured_types = ["VARIANT", "OBJECT", "ARRAY"]
         for type_name in semi_structured_types:
+            print(type_name)
             with self.subTest(type_name=type_name):
                 self.assertEqual(TypeMapper.snowflake_to_duckdb(type_name), "JSON")
+                print("asserted")
 
     def test_snowflake_to_duckdb_vector(self):
         self.assertEqual(TypeMapper.snowflake_to_duckdb("VECTOR(FLOAT, 16)"), "FLOAT[16]")

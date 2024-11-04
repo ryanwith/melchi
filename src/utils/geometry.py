@@ -19,8 +19,8 @@ def convert_geojson_to_wkt(geojson_str):
     
     try:
         geojson = json.loads(geojson_str)
-        if geojson["type"].upper() == "POINT":
-            coords = geojson["coordinates"]
+        if geojson['type'].upper() == "POINT":
+            coords = geojson['coordinates']
             return f"POINT({coords[0]} {coords[1]})"
         else:
             raise ValueError(f"Unsupported geometry type: {geojson['type']}")

@@ -69,13 +69,13 @@ class DuckDBWarehouse(AbstractWarehouse):
 
 
         # create the schema in duckdb if needed
-        self.connection.execute(f"CREATE SCHEMA IF NOT EXISTS {table_info["schema"]};")
+        self.connection.execute(f"CREATE SCHEMA IF NOT EXISTS {table_info['schema']};")
         # build a list of primary keys
 
         primary_keys = []
         for column in target_schema:
-            if column["primary_key"] == True:
-                primary_keys.append(column["name"])
+            if column['primary_key'] == True:
+                primary_keys.append(column['name'])
         
         print(f"table_name: {table_info['table']}")
         print(f"cdc_type: {cdc_type}")
@@ -103,14 +103,14 @@ class DuckDBWarehouse(AbstractWarehouse):
         source_columns = []
 
         for column in source_schema:
-            source_db = f"'{table_info["database"]}'"
-            source_schema_name = f"'{table_info["schema"]}'"
-            source_table = f"'{table_info["table"]}'"
-            name = f"'{column["name"]}'"
-            type = f"'{column["type"]}'"
-            nullable = "TRUE" if column["nullable"] == True else "FALSE"
-            default_value = f"'{self.format_value_for_insert(column["default_value"])}'" if column["default_value"] else "NULL"
-            primary_key = "TRUE" if column["primary_key"] == True else "FALSE"
+            source_db = f"'{table_info['database']}'"
+            source_schema_name = f"'{table_info['schema']}'"
+            source_table = f"'{table_info['table']}'"
+            name = f"'{column['name']}'"
+            type = f"'{column['type']}'"
+            nullable = "TRUE" if column['nullable'] == True else "FALSE"
+            default_value = f"'{self.format_value_for_insert(column['default_value'])}'" if column['default_value'] else "NULL"
+            primary_key = "TRUE" if column['primary_key'] == True else "FALSE"
             source_column_values = f"""(
                 {source_db}, {source_schema_name}, {source_table}, {name}, {type}, {default_value}, {nullable}, {primary_key}
             )"""
@@ -120,10 +120,10 @@ class DuckDBWarehouse(AbstractWarehouse):
         
         # Separate the queries into two distinct statements
         update_logs = [
-            f"""DELETE FROM {self.get_change_tracking_schema_full_name()}.captured_tables WHERE schema_name = '{table_info["schema"]}' and table_name = '{table_info["table"]}';""",
-            f"""DELETE FROM {self.get_change_tracking_schema_full_name()}.source_columns WHERE table_schema = '{table_info["schema"]}' and table_name = '{table_info["table"]}';""",
-            f"""INSERT INTO {self.get_change_tracking_schema_full_name()}.captured_tables VALUES ('{table_info["schema"]}', '{table_info["table"]}', '{current_timestamp}', '{current_timestamp}', {primary_key_clause}, '{cdc_type}');""",
-            f"""INSERT INTO {self.get_change_tracking_schema_full_name()}.source_columns VALUES {(", ").join(source_columns)};"""
+            f"""DELETE FROM {self.get_change_tracking_schema_full_name()}.captured_tables WHERE schema_name = '{table_info['schema']}' and table_name = '{table_info['table']}';""",
+            f"""DELETE FROM {self.get_change_tracking_schema_full_name()}.source_columns WHERE table_schema = '{table_info['schema']}' and table_name = '{table_info['table']}';""",
+            f"""INSERT INTO {self.get_change_tracking_schema_full_name()}.captured_tables VALUES ('{table_info['schema']}', '{table_info['table']}', '{current_timestamp}', '{current_timestamp}', {primary_key_clause}, '{cdc_type}');""",
+            f"""INSERT INTO {self.get_change_tracking_schema_full_name()}.source_columns VALUES {(', ').join(source_columns)};"""
         ]
 
         for query in update_logs:
@@ -131,11 +131,11 @@ class DuckDBWarehouse(AbstractWarehouse):
 
     def get_full_table_name(self, table_info):
         """Returns fully qualified table name."""
-        return f"{table_info["schema"]}.{table_info["table"]}"
+        return f"{table_info['schema']}.{table_info['table']}"
 
     def replace_existing(self):
         """Returns whether existing tables should be replaced."""
-        return self.config["replace_existing"]
+        return self.config['replace_existing']
 
     def format_schema_row(self, row):
         """Formats a column for a schema."""
@@ -155,8 +155,8 @@ class DuckDBWarehouse(AbstractWarehouse):
             create_statement = f"CREATE TABLE IF NOT EXISTS {self.get_full_table_name(table_info)} "
         column_statements = []
         for col in schema:
-            column_statement = f"{col["name"]} {col["type"]}"
-            column_statement += " NOT NULL" if col["nullable"] == False else ""
+            column_statement = f"{col['name']} {col['type']}"
+            column_statement += " NOT NULL" if col['nullable'] == False else ""
             column_statements.append(column_statement)
         full_create_statement = f"{create_statement}({", ".join(column_statements)});"
 
@@ -165,7 +165,7 @@ class DuckDBWarehouse(AbstractWarehouse):
     def contains_spatial(self, schema):
         """Checks if schema contains spatial data types."""
         for column in schema:
-            if column["type"] == "GEOMETRY":
+            if column['type'] == "GEOMETRY":
                 return True
         return False
 
@@ -173,16 +173,16 @@ class DuckDBWarehouse(AbstractWarehouse):
 
     def get_change_tracking_schema_full_name(self):
         """Returns the change tracking schema name."""
-        return self.config["change_tracking_schema"]
+        return self.config['change_tracking_schema']
 
     def setup_environment(self):
         """Sets up environment based on warehouse role."""
-        if self.config["warehouse_role"] == "TARGET":
+        if self.config['warehouse_role'] == "TARGET":
             self.setup_target_environment()
-        elif self.config["warehouse_role"] == "SOURCE":
+        elif self.config['warehouse_role'] == "SOURCE":
             raise NotImplementedError(f"DuckDB is not yet supported as a source")
         else:
-            raise ValueError(f"Unknown warehouse role: {self.config["warehoues_role"]}")
+            raise ValueError(f"Unknown warehouse role: {self.config['warehoues_role']}")
 
     def setup_target_environment(self):
         """Creates metadata tables for CDC tracking and source schema information."""
@@ -215,7 +215,7 @@ class DuckDBWarehouse(AbstractWarehouse):
         elif cdc_type in ("APPEND_ONLY_STREAM", "STANDARD_STREAM"):
             if cdc_type == "STANDARD_STREAM" and updates_dict.get("records_to_delete") is not None:
                 # deletes must be processed first
-                delete_batches = updates_dict["records_to_delete"]
+                delete_batches = updates_dict['records_to_delete']
                 self._process_delete_batches(delete_batches, table_info)
             if insert_batches is not None:
                 # process inserts after
@@ -231,7 +231,7 @@ class DuckDBWarehouse(AbstractWarehouse):
     def _process_delete_batches(self, deletes_df, table_info):
         """Process deletes in batches using primary keys."""
         full_table_name = self.get_full_table_name(table_info)
-        temp_table = f"{table_info["table"]}_deletes_temp"
+        temp_table = f"{table_info['table']}_deletes_temp"
 
         primary_keys = None
         formatted_primary_keys = None
@@ -268,7 +268,7 @@ class DuckDBWarehouse(AbstractWarehouse):
         batches_exist = False
         for batch in df:
             if iterations == 0:
-                formatted_columns = ", ".join([x["name"] for x in self.get_schema(table_info)])
+                formatted_columns = ", ".join([x['name'] for x in self.get_schema(table_info)])
             iterations += 1
             batches_exist = True
             try:
@@ -285,14 +285,14 @@ class DuckDBWarehouse(AbstractWarehouse):
 
     def update_cdc_tracker(self, table_info):
         """Updates the captured_tables table with the time the last CDC operation ran."""
-        where_clause = f"WHERE table_name = '{table_info["table"]}' and schema_name = '{table_info["schema"]}'"
+        where_clause = f"WHERE table_name = '{table_info['table']}' and schema_name = '{table_info['schema']}'"
         self.connection.execute(f"UPDATE {self.get_change_tracking_schema_full_name()}.captured_tables SET updated_at = current_timestamp {where_clause};")
 
     def get_primary_keys(self, table_info):
         """Gets the primary keys for a specific table."""
         captured_tables = f"{self.get_change_tracking_schema_full_name()}.captured_tables"
         get_primary_keys_query = f"""SELECT primary_keys FROM {captured_tables}
-                WHERE table_name = '{table_info["table"]}' and schema_name = '{table_info["schema"]}'"""
+                WHERE table_name = '{table_info['table']}' and schema_name = '{table_info['schema']}'"""
         primary_keys = sorted(self.connection.execute(get_primary_keys_query).fetchone()[0])
         return primary_keys
     
@@ -428,8 +428,8 @@ class DuckDBWarehouse(AbstractWarehouse):
         return f"{geom_type}({coordinates}"
     
     def table_exists(self, table_info):
-        table = table_info["table"]
-        schema = table_info["schema"]
+        table = table_info['table']
+        schema = table_info['schema']
         query = f"SELECT * FROM information_schema.tables WHERE table_schema = '{schema}' AND table_name = '{table}'"
         results = self.connection.execute(query).fetchone()
         return True if results else False

@@ -18,9 +18,9 @@ def transfer_schema(config, tables=None):
             target_warehouse.setup_environment()
             for table in tables:
                 table_info = {
-                    "database": table["database"],
-                    "schema": table["schema"],
-                    "table": table["table"],
+                    "database": table['database'],
+                    "schema": table['schema'],
+                    "table": table['table'],
                     "cdc_type": table.get("cdc_type", None)
                 }
                 source_schema = source_warehouse.get_schema(table_info)

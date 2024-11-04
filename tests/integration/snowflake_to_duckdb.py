@@ -42,19 +42,19 @@ def test_config():
 @pytest.fixture
 def test_config_no_replace_existing():
     config = Config(config_path='tests/config/snowflake_to_duckdb.yaml')
-    config.target_config["replace_existing"] = False
-    config.source_config["replace_existing"] = False
+    config.target_config['replace_existing'] = False
+    config.source_config['replace_existing'] = False
     return config
 
 def recreate_roles(test_config):
     source_warehouse = WarehouseFactory.create_warehouse(test_config.source_type, test_config.source_config)
-    role = source_warehouse.config["role"]
-    user = source_warehouse.config["user"]
+    role = source_warehouse.config['role']
+    user = source_warehouse.config['user']
     test_tables = get_test_tables()
-    melchi_role = source_warehouse.config["melchi_role"]
+    melchi_role = source_warehouse.config['melchi_role']
 
     # Create unique lists of schemas and databases
-    databases = list(set(table["table_info"]["database"] for table in test_tables))
+    databases = list(set(table['table_info']['database'] for table in test_tables))
 
 
     try:
@@ -100,8 +100,8 @@ def drop_source_objects(test_config):
 
         # get unique list of all schemas that may need to be dropped
         for table in test_tables:
-            schema = table["table_info"]["schema"]
-            database = table["table_info"]["database"]
+            schema = table['table_info']['schema']
+            database = table['table_info']['database']
             schemas_to_drop.append(f"{database}.{schema}")
         schemas_to_drop = list(set(schemas_to_drop))
 
@@ -138,17 +138,17 @@ def create_source_tables(test_config):
 
 
     try:
-        source_warehouse.connect(source_warehouse.config["data_generation_role"])
-        source_warehouse.execute_query(f"USE DATABASE {source_warehouse.config["database"]};")
+        source_warehouse.connect(source_warehouse.config['data_generation_role'])
+        source_warehouse.execute_query(f"USE DATABASE {source_warehouse.config['database']};")
 
         for table in test_tables:
-            csv_path = Path(__file__).parent.parent.parent / table["schema_location"]
+            csv_path = Path(__file__).parent.parent.parent / table['schema_location']
             type_mappings = pd.read_csv(csv_path)
-            table_info = table["table_info"]
+            table_info = table['table_info']
             table_name = source_warehouse.get_full_table_name
             # Create test table in Snowflake
             table_name = source_warehouse.get_full_table_name(table_info)
-            create_schema_sql = f"CREATE SCHEMA IF NOT EXISTS {table_info["schema"]}"
+            create_schema_sql = f"CREATE SCHEMA IF NOT EXISTS {table_info['schema']}"
             source_warehouse.execute_query(create_schema_sql)
             create_table_sql = f"CREATE OR REPLACE TABLE {table_name} ({format_columns_for_snowflake(type_mappings)}) CHANGE_TRACKING=TRUE;"
             source_warehouse.execute_query(create_table_sql)
@@ -173,7 +173,7 @@ def grant_permissions_and_alter_objects(test_config):
     source_warehouse = WarehouseFactory.create_warehouse(test_config.source_type, test_config.source_config)
     tables = []
     for object in get_test_tables():
-        tables.append(object["table_info"])
+        tables.append(object['table_info'])
 
     try:
         source_warehouse.connect("ACCOUNTADMIN")
@@ -192,12 +192,12 @@ def insert_generated_data(test_config, rows = 5):
 
     try:
         source_warehouse.connect()
-        source_warehouse.execute_query(f"USE ROLE {source_warehouse.config["data_generation_role"]};")
-        source_warehouse.execute_query(f"USE DATABASE {source_warehouse.config["database"]};")
+        source_warehouse.execute_query(f"USE ROLE {source_warehouse.config['data_generation_role']};")
+        source_warehouse.execute_query(f"USE DATABASE {source_warehouse.config['database']};")
 
 
         for table in test_tables:
-            table_info = table["table_info"]
+            table_info = table['table_info']
             table_name = source_warehouse.get_full_table_name(table_info)
             include_geo = table.get("include_geo", False)
             insert_statements = generate_insert_into_select_statements(table_name, generate_snowflake_data(rows, include_geo))
@@ -217,12 +217,12 @@ def update_records(test_config, num_to_insert = 5, num_to_update = 5, num_to_del
     
     # Create source and target warehouse connections
     source_warehouse = WarehouseFactory.create_warehouse(test_config.source_type, test_config.source_config)
-    geo_tables = [source_warehouse.get_full_table_name(table["table_info"]) for table in get_test_tables() if table.get('include_geo', False)]
+    geo_tables = [source_warehouse.get_full_table_name(table['table_info']) for table in get_test_tables() if table.get('include_geo', False)]
 
 
     try:
         source_warehouse.connect()
-        source_warehouse.execute_query(f"USE ROLE {source_warehouse.config["data_generation_role"]}")
+        source_warehouse.execute_query(f"USE ROLE {source_warehouse.config['data_generation_role']}")
         source_warehouse.begin_transaction()
 
         for table_info in test_tables:
@@ -331,7 +331,7 @@ def confirm_append_only_stream_sync(test_config):
         
         tables_to_transfer = get_tables_to_transfer(test_config)
         for table_info in tables_to_transfer:
-            if table_info["cdc_type"] == "APPEND_ONLY_STREAM":
+            if table_info['cdc_type'] == "APPEND_ONLY_STREAM":
                 source_table_name = source_warehouse.get_full_table_name(table_info)
                 target_table_name = target_warehouse.get_full_table_name(table_info)
                 
@@ -425,8 +425,8 @@ def drop_source_cdc_objects(test_config):
         for table in get_test_tables():
             if table.get("replace_later", False):
                 print(f"Dropping stream and processing table for {table['table_info']}")
-                stream_name = source_warehouse.get_stream_name(table["table_info"])
-                stream_processing_table_name = source_warehouse.get_stream_processing_table_name(table["table_info"])
+                stream_name = source_warehouse.get_stream_name(table['table_info'])
+                stream_processing_table_name = source_warehouse.get_stream_processing_table_name(table['table_info'])
                 source_warehouse.execute_query(f"DROP STREAM IF EXISTS {stream_name};")
                 source_warehouse.execute_query(f"DROP TABLE IF EXISTS {stream_processing_table_name};")
         source_warehouse.commit_transaction()
@@ -471,7 +471,6 @@ def test_initial_setup(test_config, request):
         ["python3", "main.py", "setup", "--config", "tests/config/snowflake_to_duckdb.yaml", "--replace-existing"], 
         check=True
     )
-    
     assert result.returncode == 0, f"Setup command failed with output:\nstdout: {result.stdout}\nstderr: {result.stderr}"
 
 @pytest.mark.depends(on=['test_initial_setup'])

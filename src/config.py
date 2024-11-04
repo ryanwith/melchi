@@ -20,12 +20,12 @@ class Config:
         
         # Remove 'type' from source_config
         self.source_config = {k: v for k, v in self.config_data['source'].items() if k != 'type'}
-        self.source_config["warehouse_role"] = "SOURCE"
+        self.source_config['warehouse_role'] = "SOURCE"
         self.target_config = {k: v for k, v in self.config_data['target'].items() if k != 'type'}
-        self.target_config["warehouse_role"] = "TARGET"
+        self.target_config['warehouse_role'] = "TARGET"
 
     def get_tables_config_path(self):
-        return self.config_data["tables_config"]["path"]
+        return self.config_data['tables_config']['path']
 
     @staticmethod
     def load_config(config_path):

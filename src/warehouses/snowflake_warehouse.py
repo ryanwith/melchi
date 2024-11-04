@@ -24,7 +24,7 @@ class SnowflakeWarehouse(AbstractWarehouse):
     
     def connect(self, role = None):
         if role == None:
-            role = self.config["role"]
+            role = self.config['role']
         """Creates a cursor and sets the role and warehouse for operations."""
         connect_params = {
             'account': self.config['account'],
@@ -34,7 +34,7 @@ class SnowflakeWarehouse(AbstractWarehouse):
         self.connection = snowflake.connector.connect(**connect_params)
         self.cursor = self.connection.cursor()
         self.cursor.execute(f"USE ROLE {role};")
-        self.cursor.execute(f"USE WAREHOUSE {self.config["warehouse"]};")
+        self.cursor.execute(f"USE WAREHOUSE {self.config['warehouse']};")
 
     def disconnect(self):
         if self.cursor:
@@ -76,13 +76,13 @@ class SnowflakeWarehouse(AbstractWarehouse):
         pass
 
     def get_full_table_name(self, table_info):
-        database = table_info["database"]
-        schema = table_info["schema"]
-        table = table_info["table"]
+        database = table_info['database']
+        schema = table_info['schema']
+        table = table_info['table']
         return f"{database}.{schema}.{table}"
     
     def replace_existing(self):
-        return self.config["replace_existing"]
+        return self.config['replace_existing']
 
     def format_schema_row(self, row):
         # input: row of the schema as provided in a cursor
@@ -97,15 +97,15 @@ class SnowflakeWarehouse(AbstractWarehouse):
     # CHANGE TRACKING MANAGEMENT
     
     def get_change_tracking_schema_full_name(self):
-        return f"{self.config["change_tracking_database"]}.{self.config["change_tracking_schema"]}"
+        return f"{self.config['change_tracking_database']}.{self.config['change_tracking_schema']}"
     
     def setup_environment(self, tables_to_transfer = None):
-        if self.config["warehouse_role"] == "TARGET":
+        if self.config['warehouse_role'] == "TARGET":
             raise NotImplementedError(f"Snowflake is not yet supported as a target environment")
-        elif self.config["warehouse_role"] == "SOURCE":
+        elif self.config['warehouse_role'] == "SOURCE":
             self.setup_source_environment(tables_to_transfer)
         else:
-            raise ValueError(f"Unknown warehouse role: {self.config["warehoues_role"]}")
+            raise ValueError(f"Unknown warehouse role: {self.config['warehoues_role']}")
 
     def setup_source_environment(self, tables_to_transfer):
         """Creates streams and CDC tables for each table to be transferred."""
@@ -126,16 +126,16 @@ class SnowflakeWarehouse(AbstractWarehouse):
 
     def get_stream_name(self, table_info):
         """Returns the stream name for the given table."""
-        database = table_info["database"]
-        schema = table_info["schema"]
-        table = table_info["table"]
+        database = table_info['database']
+        schema = table_info['schema']
+        table = table_info['table']
         return f"{self.get_change_tracking_schema_full_name()}.{database}${schema}${table}"
     
     def get_stream_processing_table_name(self, table_info):
         """Returns the processing table name for the given table's stream."""
-        database = table_info["database"]
-        schema = table_info["schema"]
-        table = table_info["table"]
+        database = table_info['database']
+        schema = table_info['schema']
+        table = table_info['table']
         return f"{self.get_change_tracking_schema_full_name()}.{database}${schema}${table}_processing"
 
     def create_stream_objects(self, table_info):
@@ -144,8 +144,8 @@ class SnowflakeWarehouse(AbstractWarehouse):
         Generates unique names for stream and processing table.
         """
         stream_name = self.get_stream_name(table_info)
-        table_name = f"{table_info["database"]}.{table_info["schema"]}.{table_info["table"]}"
-        cdc_type = table_info["cdc_type"]
+        table_name = f"{table_info['database']}.{table_info['schema']}.{table_info['table']}"
+        cdc_type = table_info['cdc_type']
         append_only_statement = f"APPEND_ONLY = {"TRUE" if cdc_type == "APPEND_ONLY_STREAM" else "FALSE"}"
         stream_processing_table = f"{stream_name}_processing"
         if self.replace_existing() == True:
@@ -213,14 +213,14 @@ class SnowflakeWarehouse(AbstractWarehouse):
                 # For standard streams, get primary keys of records to delete
                 primary_keys = self.get_primary_keys(table_info)
                 if primary_keys == []:
-                    primary_keys = ["METADATA$ROW_ID as MELCHI_ROW_ID"]
+                    primary_keys = ['METADATA$ROW_ID as MELCHI_ROW_ID']
                 pk_columns = ", ".join(primary_keys)
                 delete_query = f"""
                     SELECT {pk_columns}
                     FROM {stream_processing_table_name}
                     WHERE "METADATA$ACTION" = 'DELETE'
                 """
-                updates_dict["records_to_delete"] = self.get_df_batches(delete_query)
+                updates_dict['records_to_delete'] = self.get_df_batches(delete_query)
 
             # Get records to insert (for both stream types)
             insert_query = f"""
@@ -236,7 +236,7 @@ class SnowflakeWarehouse(AbstractWarehouse):
                     "METADATA$ACTION": "MELCHI_METADATA_ACTION"
                 }, inplace=True)
                 processed_batches.append(batch)
-            updates_dict["records_to_insert"] = processed_batches
+            updates_dict['records_to_insert'] = processed_batches
 
         elif cdc_type == "FULL_REFRESH":
             # For full refresh, we only need insert records
@@ -246,7 +246,7 @@ class SnowflakeWarehouse(AbstractWarehouse):
             all_updates = []
             for df in updates:
                 all_updates.append(df)
-            updates_dict["records_to_insert"] = all_updates
+            updates_dict['records_to_insert'] = all_updates
         return updates_dict
 
 
@@ -288,11 +288,11 @@ class SnowflakeWarehouse(AbstractWarehouse):
         general_grants = [
             "--These grants enable Melchi to create objects that track changes.",
             f"GRANT USAGE ON WAREHOUSE {warehouse} TO ROLE {role};",
-            f"GRANT USAGE ON DATABASE {self.config["change_tracking_database"]} TO ROLE {role};",
+            f"GRANT USAGE ON DATABASE {self.config['change_tracking_database']} TO ROLE {role};",
             f"GRANT USAGE, CREATE TABLE, CREATE STREAM ON SCHEMA {self.get_change_tracking_schema_full_name()} TO ROLE {role};",
         ]
 
-        # enable_cdc_statements = ["--These statements enable Melchi to create streams that track changes on the provided tables."]
+        # enable_cdc_statements = ['--These statements enable Melchi to create streams that track changes on the provided tables.']
         database_grants = []
         schema_grants = []
         table_grants = []
@@ -313,7 +313,7 @@ class SnowflakeWarehouse(AbstractWarehouse):
 
         general_grants.append("\n")
 
-        all_grants = create_change_tracking_schema_statement + ["\n"] + general_grants + database_grants + schema_grants + table_grants
+        all_grants = create_change_tracking_schema_statement + ['\n'] + general_grants + database_grants + schema_grants + table_grants
         return "\n".join(all_grants)
 
     def get_data_as_df_for_comparison(self, table_name, order_by_column = None):
@@ -367,6 +367,6 @@ class SnowflakeWarehouse(AbstractWarehouse):
 
     def has_geometry_or_geography_column(self, schema):
         for col in schema:
-            if col["type"] in ("GEOMETRY", "GEOGRAPHY"):
+            if col['type'] in ("GEOMETRY", "GEOGRAPHY"):
                 return True
         return False

@@ -169,9 +169,9 @@ class TestSnowflakeWarehouse:
         assert snowflake_source_warehouse.replace_existing() == False
         
         # Test with explicit config
-        snowflake_source_warehouse.config["replace_existing"] = True
+        snowflake_source_warehouse.config['replace_existing'] = True
         assert snowflake_source_warehouse.replace_existing() == True
-        snowflake_source_warehouse.config["replace_existing"] = False
+        snowflake_source_warehouse.config['replace_existing'] = False
         assert snowflake_source_warehouse.replace_existing() == False
 
     # Change Tracking Tests
@@ -272,7 +272,7 @@ class TestSnowflakeWarehouse:
             "cdc_type": "STANDARD_STREAM"
         }
 
-        snowflake_source_warehouse.config["replace_existing"] = True
+        snowflake_source_warehouse.config['replace_existing'] = True
 
         # Execute the method
         snowflake_source_warehouse.create_stream_objects(table_info)
@@ -298,7 +298,7 @@ class TestSnowflakeWarehouse:
         mock_connect.return_value = mock_connection
         mock_connection.cursor.return_value = mock_cursor
 
-        snowflake_source_warehouse.config["replace_existing"] = True
+        snowflake_source_warehouse.config['replace_existing'] = True
 
 
         # Connect and prepare test data
@@ -335,7 +335,7 @@ class TestSnowflakeWarehouse:
         mock_connection.cursor.return_value = mock_cursor
         
         # Configure warehouse to not replace existing objects
-        snowflake_source_warehouse.config["replace_existing"] = False
+        snowflake_source_warehouse.config['replace_existing'] = False
         
         # Connect and prepare test data
         snowflake_source_warehouse.connect()

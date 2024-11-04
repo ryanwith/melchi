@@ -8,7 +8,7 @@ def setup_source(config, tables_to_transfer = None):
     try:
         tables_to_transfer = get_tables_to_transfer(config)
 
-        # if source_warehouse.config["cdc_strategy"] == "cdc_streams":
+        # if source_warehouse.config['cdc_strategy'] == "cdc_streams":
         try:
             source_warehouse.connect()
             source_warehouse.begin_transaction()
