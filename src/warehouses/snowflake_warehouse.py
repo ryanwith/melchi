@@ -324,13 +324,17 @@ class SnowflakeWarehouse(AbstractWarehouse):
         
         column_expressions = []
         timestamp_tz_columns = []
-        binary_columns = []  # Add tracking of binary columns
+        binary_columns = []
 
         for col in column_info:
             col_name, col_type = col[0], col[1].lower()
             if "timestamp_tz" in col_type or "timestamp_ltz" in col_type:
                 column_expressions.append(f"TO_CHAR({col_name}, 'YYYY-MM-DD HH24:MI:SS.FF6TZH:TZM') AS {col_name}")
                 timestamp_tz_columns.append(col_name)
+            elif "binary" in col_type:
+                # Just get the raw binary data
+                column_expressions.append(col_name)
+                binary_columns.append(col_name)
             else:
                 column_expressions.append(col_name)
         
@@ -338,15 +342,36 @@ class SnowflakeWarehouse(AbstractWarehouse):
         df = [df for df in self.get_df_batches(query)][0]
         processed_df = TypeMapper.process_df_snowflake_to_duckdb(df)
 
-        # Format timestamp columns
-        for col in timestamp_tz_columns:
-            processed_df[col] = processed_df[col].apply(lambda x: re.sub(r'([-+]\d{2}):(\d{2})$', r'\1\2', x))
+        def normalize_binary(value):
+            """Convert binary data to consistent bytes representation"""
+            if pd.isna(value):
+                return None
+            import base64
+            if isinstance(value, bytes):
+                return str(value)  # Gets the b'...' representation
+            if isinstance(value, str) and value.endswith('=='): # base64
+                return str(base64.b64decode(value))  # Convert to b'...' representation
+            return str(value)
+
+        # Convert specific columns to strings consistently
+        for col in processed_df.columns:
+            if processed_df[col].dtype.name.startswith('decimal'):
+                processed_df[col] = processed_df[col].astype(str)
+            elif processed_df[col].dtype.name in ['datetime64[ns]', 'date', 'time']:
+                processed_df[col] = processed_df[col].astype(str)
+            elif col in timestamp_tz_columns:
+                # Ensure consistent formatting for timestamp columns
+                processed_df[col] = processed_df[col].apply(lambda x: re.sub(r'([-+]\d{2}):(\d{2})$', r'\1\2', x))
+            elif col in binary_columns:
+                processed_df[col] = processed_df[col].apply(normalize_binary)
         
-        # Convert all columns to string for consistent comparison
-        processed_df = processed_df.astype(str)
+        # Convert all remaining columns to string
+        for col in processed_df.columns:
+            if col not in binary_columns:  # Skip binary columns as they're already handled
+                processed_df[col] = processed_df[col].astype(str)
         
         return processed_df
-
+    
     def set_timezone(self, tz):
         try:
             self.cursor.execute(f"ALTER SESSION SET TIMEZONE = '{tz}';")
