@@ -48,7 +48,7 @@ Melchi fills specific gaps in the data replication landscape:
    - Run expensive queries without warehouse costs
    - Prototype optimizations before production deployment
 
-Would you consider using Melchi? Let us know your use case in the [Discord community](https://discord.gg/MEpEACAz).  We'd also love a github star!
+Would you consider using Melchi? Let us know your use case in the [Discord community](https://discord.gg/MEpEACAz).
 
 ## Quick Start 🚀
 
