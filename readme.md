@@ -18,6 +18,161 @@ Once set up, simply run the `sync_data` command whenever you need to update. Mel
 
 All you need to do is set up a role in Snowflake with the appropriate permissions. Melchi handles the rest, providing a low-maintenance, efficient solution for keeping your DuckDB instance in sync with Snowflake.
 
+## Quick Start 🚀
+
+Get a local copy of your Snowflake data in 5 minutes:
+
+1. Clone and set up:
+```bash
+git clone https://github.com/ryanwith/melchi.git
+cd melchi
+python3 -m venv venv && source venv/bin/activate  # On Windows: venv\Scripts\activate
+pip install -r requirements.txt
+```
+
+2. Create `config/config.yaml`:
+```yaml
+source:
+  type: snowflake
+  account: ${SNOWFLAKE_ACCOUNT_IDENTIFIER}
+  user: ${SNOWFLAKE_USER}
+  password: ${SNOWFLAKE_PASSWORD}
+  role: YOUR_ROLE
+  warehouse: YOUR_WAREHOUSE
+  change_tracking_database: melchi_cdc_db
+  change_tracking_schema: streams
+
+target:
+  type: duckdb
+  database: output/local.duckdb
+  change_tracking_schema: melchi
+
+tables_config:
+  path: "config/tables_to_transfer.csv"
+```
+
+3. Create `config/tables_to_transfer.csv`:
+```csv
+database,schema,table,cdc_type
+your_db,your_schema,your_table,full_refresh
+```
+
+4. Set environment variables in `.env`:
+```bash
+SNOWFLAKE_ACCOUNT_IDENTIFIER=your_account
+SNOWFLAKE_USER=your_username
+SNOWFLAKE_PASSWORD=your_password
+```
+
+5. Run initial setup and sync:
+```bash
+python main.py setup --config config/config.yaml
+python main.py sync_data --config config/config.yaml
+```
+
+Your data is now in DuckDB! Query it with:
+```python
+import duckdb
+conn = duckdb.connect('output/local.duckdb')
+conn.execute('SELECT * FROM your_schema.your_table').fetchall()
+```
+
+See [Configuration](#configuration) for detailed setup options and [CDC Types](#cdc-types) for advanced change tracking strategies.
+
+## Technical Architecture 🔧
+
+### Overview
+
+Melchi uses a combination of Snowflake's native change tracking features and custom metadata tables to efficiently synchronize data. Here's how the key components work together:
+
+### Core Components
+
+#### 1. CDC Tracking Layer
+- **Standard Streams**: Uses Snowflake's native stream objects to capture INSERTs, UPDATEs, and DELETEs
+- **Append-Only Streams**: Uses Snowflake's native append-only stream objects to capture INSERTs
+- **Full Refresh**: Direct table copies.  Good for smaller tables or for initial tests
+- **Processing Tables**: Temporary staging areas in Snowflake for batching changes
+
+#### 2. Metadata Management
+- **Source Tracking**: Maintains table schemas, primary keys, and CDC configurations
+- **Sync State**: Tracks last successful sync time and change volumes
+- **Row Identification**: Adds `melchi_row_id` for tables using streams without primary keys
+
+#### 3. Data Movement Pipeline
+```
+[Snowflake Source] → [Change Detection] → [Batched Processing] → [DuckDB Target]
+```
+
+### Key Design Decisions
+
+1. **Transactional Consistency**
+   - All operations are wrapped in transactions
+   - Failed syncs roll back completely
+   - No partial updates are committed
+   - Source cleanup only occurs after successful target commit
+
+2. **Memory Management**
+   - Streams process data in configurable batch sizes
+   - Large tables are chunked automatically
+   - Pandas DataFrames used for efficient type conversion
+   - Memory usage scales with batch size, not table size
+
+3. **Type System**
+   - Automated type mapping between Snowflake and DuckDB
+   - Handles complex types (ARRAY, VARIANT, GEOGRAPHY)
+   - Preserves precision for numeric types
+   - Consistent timezone handling for timestamps
+
+4. **Error Handling**
+   - Automatic retry logic for transient failures
+   - Preserves CDC data on failed syncs
+   - Detailed error logging and state tracking
+   - Self-healing for interrupted syncs
+
+### Sync Process Flow
+
+1. **Initial Setup**
+```mermaid
+graph LR
+    A[Configure Tables] --> B[Create CDC Objects]
+    B --> C[Setup DuckDB Schema]
+    C --> D[Initialize Metadata]
+```
+
+2. **Regular Sync**
+```mermaid
+graph TD
+    A[Check for Changes] --> B{CDC Type?}
+    B -->|Standard| C[Process Changes]
+    B -->|Append-Only| D[Process Inserts]
+    B -->|Full Refresh| E[Copy Table]
+    C --> F[Apply Changes]
+    D --> F
+    E --> F
+    F --> G[Update Metadata]
+    G --> H[Cleanup CDC Data]
+```
+
+### Limitations
+
+1. **Current Limitations**
+- Geography and Geometry columns not supported with `standard_stream` due to snowflake limitations
+- Primary keys must be defined in Snowflake for streams (or a `melchi_row_id` will be added)
+- All tables must be replaced together when modifying the transfer configuration
+- You cannot replicate tables with the same schema and column names into duckdb, even if they are in different databases in Snowflake
+
+### Future Architecture Plans
+
+1. **Planned Enhancements**
+   - Additional warehouse support (BigQuery, Redshift)
+   - Additional CDC mechanisms
+
+2. **Under Consideration**
+   - Real-time CDC using Snowflake tasks
+   - Built-in data validation
+   - Web UI for monitoring
+   - Multi-target sync support
+
 ## CDC Types
 
 Melchi supports three different Change Data Capture (CDC) strategies that can be specified for each table in your `tables_to_transfer.csv` file. All strategies provide transactional consistency - the key differences are in how changes are detected and synchronized.
@@ -424,12 +579,6 @@ When you run `sync_data`, Melchi handles each table according to its CDC strateg
 - Tables without primary keys automatically get a `melchi_row_id` column added
 - Uses Snowflake's native change tracking capabilities for efficient syncing
 - Supports mixing different CDC strategies across tables based on your needs
-
-#### Current Limitations
-- Geography and Geometry columns not supported with `standard_stream` due to snowflake limitations
-- Primary keys must be defined in Snowflake (or a `melchi_row_id` will be added)
-- All tables must be replaced together when modifying the transfer configuration
-- You cannot replicate tables with the same schema and column names into duckdb, even if they are in different databases in Snowflake
 
 ## Contributing
 
