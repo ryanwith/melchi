@@ -18,6 +18,38 @@ Once set up, simply run the `sync_data` command whenever you need to update. Mel
 
 All you need to do is set up a role in Snowflake with the appropriate permissions. Melchi handles the rest, providing a low-maintenance, efficient solution for keeping your DuckDB instance in sync with Snowflake.
 
+## Why Melchi? 🤔
+
+Melchi fills specific gaps in the data replication landscape:
+
+### Key Use Cases
+
+1. **DuckDB Evaluation**
+   - Test DuckDB performance against your Snowflake workloads
+   - Experiment with DuckDB without disrupting production
+   - Compare query costs and performance
+   - Prototype analytics workflows locally
+
+2. **Data Warehouse to Data Warehouse**
+   - Most CDC tools focus on OLTP → warehouse pipelines (databases → Snowflake)
+   - Melchi specializes in warehouse → warehouse movement
+   - Handles warehouse-specific data types properly (ARRAY, VARIANT, GEOGRAPHY)
+   - Optimized for analytical workload patterns
+
+3. **Local Development Environment**
+   - Work with production data locally without Snowflake costs
+   - Fast iteration on analytics queries
+   - Develop and test without internet connectivity
+   - Quick setup for new team members
+
+4. **Cost Optimization**
+   - Reduce Snowflake compute costs for development and testing
+   - Cache frequently accessed data locally
+   - Run expensive queries without warehouse costs
+   - Prototype optimizations before production deployment
+
+Would you consider using Melchi? Let us know your use case in the [Discord community](https://discord.gg/MEpEACAz).  We'd also love a github star!
+
 ## Quick Start 🚀
 
 Get a local copy of your Snowflake data in 5 minutes:
