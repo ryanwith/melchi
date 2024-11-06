@@ -2,6 +2,7 @@
 
 from .warehouses.warehouse_factory import WarehouseFactory
 from .utils.table_config import get_tables_to_transfer, get_cdc_type
+from uuid import uuid4
 
 
 def sync_data(config):
@@ -24,9 +25,11 @@ def sync_data(config):
 
 def sync_table(source_warehouse, target_warehouse, table_info):
     try:
+        etl_id = uuid4()
         target_warehouse.begin_transaction()
-        updates_dict = source_warehouse.get_updates(table_info)
-        target_warehouse.sync_table(table_info, updates_dict)
+        existing_etl_ids = target_warehouse.get_etl_ids(table_info)
+        updates_dict = source_warehouse.get_updates(table_info, existing_etl_ids, etl_id)
+        target_warehouse.sync_table(table_info, updates_dict, etl_id)
         target_warehouse.commit_transaction()
 
         # if there are any issues with commiting into the target database this won't be executed

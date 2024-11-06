@@ -159,7 +159,8 @@ class SnowflakeWarehouse(AbstractWarehouse):
             create_query,
             f"ALTER TABLE {stream_processing_table} ADD COLUMN IF NOT EXISTS\"METADATA$ACTION\" varchar;",
             f"ALTER TABLE {stream_processing_table} ADD COLUMN IF NOT EXISTS \"METADATA$ISUPDATE\" varchar;",
-            f"ALTER TABLE {stream_processing_table} ADD COLUMN IF NOT EXISTS \"METADATA$ROW_ID\" varchar;"
+            f"ALTER TABLE {stream_processing_table} ADD COLUMN IF NOT EXISTS \"METADATA$ROW_ID\" varchar;",
+            f"ALTER TABLE {stream_processing_table} ADD COLUMN IF NOT EXISTS etl_id varchar;"
         ]
         for query in create_stream_processing_table_queries:
             self.cursor.execute(query)
@@ -189,7 +190,7 @@ class SnowflakeWarehouse(AbstractWarehouse):
                     # Re-raise any other exceptions
                     raise
 
-    def get_updates(self, table_info):
+    def get_updates(self, table_info, existing_etl_ids, new_etl_id):
         """
         Retrieves CDC data from stream table and returns changes in a dictionary format.
         For standard streams: returns both delete and insert records
@@ -203,12 +204,16 @@ class SnowflakeWarehouse(AbstractWarehouse):
         }
 
         if cdc_type in ("APPEND_ONLY_STREAM", "STANDARD_STREAM"):
+
+            self._cleanup_records(table_info, existing_etl_ids)
+
             stream_processing_table_name = self.get_stream_processing_table_name(table_info)
             stream_name = self.get_stream_name(table_info)
             
             # Load stream data into processing table
             self.cursor.execute(f"INSERT INTO {stream_processing_table_name} SELECT * FROM {stream_name};")
-            
+            self.cursor.execute(f"UPDATE TABLE {stream_processing_table_name} SET etl_id = '{new_etl_id}'")
+
             if cdc_type == "STANDARD_STREAM":
                 # For standard streams, get primary keys of records to delete
                 primary_keys = self.get_primary_keys(table_info)
@@ -248,6 +253,13 @@ class SnowflakeWarehouse(AbstractWarehouse):
                 all_updates.append(df)
             updates_dict['records_to_insert'] = all_updates
         return updates_dict
+
+    def _cleanup_records(self, table_info, existing_etl_ids):
+        formatted_ids = [f"'{id}'" for id in existing_etl_ids]
+        formatted_where_clause = f"WHERE etl_id in ({', '.join(formatted_ids)})"
+        delete_transferred_records_query = f"DELETE FROM {self.get_stream_processing_table_name(table_info)} {formatted_where_clause}"
+        print(delete_transferred_records_query)
+        self.execute_query(delete_transferred_records_query)
 
 
     # UTILITY METHODS

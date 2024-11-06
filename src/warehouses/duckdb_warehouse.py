@@ -188,17 +188,16 @@ class DuckDBWarehouse(AbstractWarehouse):
         """Creates metadata tables for CDC tracking and source schema information."""
         self.connection.execute(f"CREATE SCHEMA IF NOT EXISTS {self.get_change_tracking_schema_full_name()};")
         if self.replace_existing() == True:
-            beginning_of_query = "CREATE OR REPLACE TABLE"
+            beginning_of_query = f"CREATE OR REPLACE TABLE {self.get_change_tracking_schema_full_name()}"
         else:
-            beginning_of_query = "CREATE TABLE IF NOT EXISTS"
-        self.connection.execute(f"""{beginning_of_query} {self.get_change_tracking_schema_full_name()}"""
-                                + """.captured_tables (schema_name varchar, table_name varchar, created_at timestamp, updated_at timestamp, primary_keys varchar[], cdc_type varchar);""")
-        self.connection.execute(f"""{beginning_of_query} {self.get_change_tracking_schema_full_name()}"""
-                                + """.source_columns (table_catalog varchar, table_schema varchar, table_name varchar, column_name varchar, data_type varchar, column_default varchar, is_nullable boolean, primary_key boolean);""")
-
+            beginning_of_query = f"CREATE TABLE IF NOT EXISTS {self.get_change_tracking_schema_full_name()}"
+        self.connection.execute(f"""{beginning_of_query}.captured_tables (schema_name varchar, table_name varchar, created_at timestamp, updated_at timestamp, primary_keys varchar[], cdc_type varchar);""")
+        self.connection.execute(f"""{beginning_of_query}.source_columns (table_catalog varchar, table_schema varchar, table_name varchar, column_name varchar, data_type varchar, column_default varchar, is_nullable boolean, primary_key boolean);""")
+        self.connection.execute(f"""{beginning_of_query}.etl_events (schema_name varchar, table_name varchar, etl_id varchar, completed_at timestamp_ns default current_timestamp);""")
+        print("queries")
     # DATA SYNCHRONIZATION
 
-    def sync_table(self, table_info, updates_dict):
+    def sync_table(self, table_info, updates_dict, etl_id):
         """
         Syncs changes from source to target table, processing batches of deletes and inserts.
         Updates come as a dictionary with optional records_to_delete and records_to_insert DataFrames.
@@ -225,7 +224,7 @@ class DuckDBWarehouse(AbstractWarehouse):
         if data_inserted == False:
             print(f"No records ingested into {full_table_name}.")
 
-        self.update_cdc_tracker(table_info)
+        self._update_cdc_trackers(table_info, etl_id)
         # update info of last update time
 
     def _process_delete_batches(self, deletes_df, table_info):
@@ -283,10 +282,22 @@ class DuckDBWarehouse(AbstractWarehouse):
     def cleanup_source(self, table_info):
         pass
 
-    def update_cdc_tracker(self, table_info):
+    def _update_cdc_trackers(self, table_info, etl_id):
         """Updates the captured_tables table with the time the last CDC operation ran."""
-        where_clause = f"WHERE table_name = '{table_info['table']}' and schema_name = '{table_info['schema']}'"
-        self.connection.execute(f"UPDATE {self.get_change_tracking_schema_full_name()}.captured_tables SET updated_at = current_timestamp {where_clause};")
+
+        # update captured_tables
+        ct_where_clause = f""
+        update_captured_tables_query = (f"""UPDATE {self.get_change_tracking_schema_full_name()}.captured_tables 
+            SET updated_at = current_timestamp 
+            WHERE table_name = '{table_info['table']}'
+            AND schema_name = '{table_info['schema']}';""")
+        
+        update_etl_events_query = f"""INSERT INTO {self.get_change_tracking_schema_full_name()}.etl_events VALUES 
+            ('{table_info['schema']}', '{table_info['table']}', '{etl_id}', current_timestamp::timestamp);
+        """
+        print(update_etl_events_query)
+        self.execute_query(update_captured_tables_query)
+        self.execute_query(update_etl_events_query)
 
     def get_primary_keys(self, table_info):
         """Gets the primary keys for a specific table."""
@@ -387,6 +398,15 @@ class DuckDBWarehouse(AbstractWarehouse):
             df[col] = df[col].apply(lambda x: x[10:-1].replace("\\'", "'") if isinstance(x, str) and len(x) > 11 else x)
 
         return df
+    
+    def get_etl_ids(self, table_info):
+        change_tracking_schema = self.get_change_tracking_schema_full_name()
+        table = table_info["table"]
+        schema = table_info["schema"]
+        query_text = f"SELECT etl_id FROM {change_tracking_schema}.etl_events where schema_name = '{schema}' and table_name = '{table}' group by 1;"
+        etl_ids = self.execute_query(query_text)
+        etl_ids = [] if etl_ids is None else etl_ids
+        return [row[0] for row in etl_ids] 
 
     # UTILITY METHODS
 

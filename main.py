@@ -25,6 +25,7 @@ def main():
         setup_source(config)
         print("Source setup complete")
         transfer_schema(config)
+        print("Schema transfer complete")
     elif args.action == "sync_data":
         print("Data sync started")
         sync_data(config)
