@@ -312,7 +312,6 @@ class SnowflakeWarehouse(AbstractWarehouse):
         formatted_ids = [f"'{id}'" for id in existing_etl_ids]
         formatted_where_clause = f"WHERE etl_id in ({', '.join(formatted_ids)})"
         delete_transferred_records_query = f"DELETE FROM {self.get_stream_processing_table_name(table_info)} {formatted_where_clause}"
-        print(delete_transferred_records_query)
         self.execute_query(delete_transferred_records_query)
 
 
@@ -448,7 +447,6 @@ class SnowflakeWarehouse(AbstractWarehouse):
     def find_problems(self, tables_to_transfer):
         problems = []
         for table_info in tables_to_transfer:
-            print(table_info)
             try:
                 cdc_type = get_cdc_type(table_info)
             except ValueError as e:
