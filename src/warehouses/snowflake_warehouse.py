@@ -16,21 +16,72 @@ class SnowflakeWarehouse(AbstractWarehouse):
 
     def __init__(self, config):
         super().__init__("snowflake")  # Initialize with the warehouse type
-        self.config = config
+        self.config = config.copy()  # Make a copy to avoid modifying the original
         self.connection = None
         self.cursor = None
+
+        # Check if connection file path is specified in config
+        connection_file_path = self.config.get('connection_file_path')
+        if connection_file_path:
+            try:
+                try:
+                    import tomllib
+                except ImportError:
+                    # used if python version is <3.11
+                    import tomli as tomllib
+                
+                # Read TOML file
+                with open(connection_file_path, "rb") as f:
+                    toml_config = tomllib.load(f)
+                
+                # Get profile name from config, default to None
+                profile_name = self.config.get('connection_profile_name')
+                
+                # If profile_name is specified, try to get that profile's config
+                if profile_name:
+                    if profile_name in toml_config:
+                        toml_config = toml_config[profile_name]
+                    else:
+                        raise ValueError(f"Profile '{profile_name}' not found in config file")
+                # If no profile specified, look for default profile
+                elif "default" in toml_config:
+                    toml_config = toml_config["default"]
+                
+                # Update config with TOML values
+                self.config.update(toml_config)
+                
+                # Remove the connection file path and profile name from config 
+                # since they're not needed after loading
+                self.config.pop('connection_file_path', None)
+                self.config.pop('connection_profile_name', None)
+                
+            except Exception as e:
+                raise ValueError(f"Error loading TOML configuration file: {str(e)}")
+
+
+
 
     # CONNECTION METHODS
     
     def connect(self, role = None):
+        """Creates a cursor and sets the role and warehouse for operations."""
+
         if role == None:
             role = self.config['role']
-        """Creates a cursor and sets the role and warehouse for operations."""
+
         connect_params = {
             'account': self.config['account'],
             'user': self.config['user'],
-            'password': self.config['password']
         }
+
+        auth_type = self.get_auth_type()
+        if auth_type == "snowflake":
+            connect_params['password'] = self.config['password']
+        elif auth_type == "externalbrowser":
+            connect_params["authenticator"] = "externalbrowser"
+        else:
+            raise ValueError("Invalid connection type.  Authenticator must be set to externalbrowser or left out.")
+
         self.connection = snowflake.connector.connect(**connect_params)
         self.cursor = self.connection.cursor()
         self.cursor.execute(f"USE ROLE {role};")
@@ -409,3 +460,6 @@ class SnowflakeWarehouse(AbstractWarehouse):
             if col['type'] in ("GEOMETRY", "GEOGRAPHY"):
                 return True
         return False
+
+    def get_auth_type(self):
+        return self.config.get("authenticator", "snowflake")

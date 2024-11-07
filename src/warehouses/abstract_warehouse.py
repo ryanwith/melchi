@@ -158,3 +158,8 @@ class AbstractWarehouse(ABC):
         Sets the timezone for the warehouse
         """
         pass
+
+    @abstractmethod
+    def get_auth_type(self):
+        "Returns the auth type for the warehouse"
+        pass

@@ -455,3 +455,6 @@ class DuckDBWarehouse(AbstractWarehouse):
         query = f"SELECT * FROM information_schema.tables WHERE table_schema = '{schema}' AND table_name = '{table}'"
         results = self.connection.execute(query).fetchone()
         return True if results else False
+    
+    def get_auth_type(self):
+        return "USERNAME_AND_PASSWORD"

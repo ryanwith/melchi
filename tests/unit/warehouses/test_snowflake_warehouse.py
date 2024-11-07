@@ -380,3 +380,217 @@ class TestSnowflakeWarehouse:
             call("SELECT * FROM test_table")
         ]
         assert mock_cursor.execute.call_args_list == expected_calls
+
+    def test_connect_no_authenticator(self, snowflake_source_warehouse, mock_snowflake_connector):
+        """Test that when no authenticator is specified, password auth is used"""
+        # Arrange
+        mock_connection = Mock()
+        mock_cursor = Mock()
+        mock_connection.cursor.return_value = mock_cursor
+        mock_snowflake_connector.return_value = mock_connection
+
+        # Act
+        snowflake_source_warehouse.connect()
+
+        # Assert
+        mock_snowflake_connector.assert_called_once_with(
+            account="test_account",
+            user="test_user",
+            password="test_password"
+        )
+
+    def test_connect_externalbrowser(self, mock_snowflake_connector):
+        """Test that when externalbrowser is specified, it's used for connection"""
+        # Arrange
+        config = {
+            "account": "test_account",
+            "user": "test_user",
+            "role": "test_role",
+            "warehouse": "test_warehouse",
+            "database": "test_database",
+            "change_tracking_database": "test_cdc_db",
+            "change_tracking_schema": "test_cdc_schema",
+            "cdc_strategy": "cdc_streams",
+            "warehouse_role": "SOURCE",
+            "replace_existing": False,
+            "authenticator": "externalbrowser"
+        }
+        warehouse = SnowflakeWarehouse(config)
+        
+        mock_connection = Mock()
+        mock_cursor = Mock()
+        mock_connection.cursor.return_value = mock_cursor
+        mock_snowflake_connector.return_value = mock_connection
+
+        # Act
+        warehouse.connect()
+
+        # Assert
+        mock_snowflake_connector.assert_called_once_with(
+            account="test_account",
+            user="test_user",
+            authenticator="externalbrowser"
+        )
+
+    def test_connect_invalid_authenticator(self, mock_snowflake_connector):
+        """Test that specifying an invalid authenticator raises ValueError during connect"""
+        # Arrange
+        config = {
+            "account": "test_account",
+            "user": "test_user",
+            "role": "test_role",
+            "warehouse": "test_warehouse",
+            "database": "test_database",
+            "change_tracking_database": "test_cdc_db",
+            "change_tracking_schema": "test_cdc_schema",
+            "cdc_strategy": "cdc_streams",
+            "warehouse_role": "SOURCE",
+            "replace_existing": False,
+            "authenticator": "invalid_auth"
+        }
+        warehouse = SnowflakeWarehouse(config)
+
+        # Act/Assert
+        with pytest.raises(ValueError, match="Invalid connection type.  Authenticator must be set to externalbrowser or left out."):
+            warehouse.connect()
+
+    def test_config_no_connection_file(self):
+        """Test that when no connection file path is specified in config, the provided config is used as-is"""
+        config = {
+            "account": "test_account",
+            "user": "test_user",
+            "password": "test_password",
+            "role": "test_role",
+            "warehouse": "test_warehouse",
+            "database": "test_database",
+            "change_tracking_database": "test_cdc_db",
+            "change_tracking_schema": "test_cdc_schema",
+            "cdc_strategy": "cdc_streams",
+            "warehouse_role": "SOURCE",
+            "replace_existing": False
+        }
+        
+        warehouse = SnowflakeWarehouse(config)
+        
+        # Verify all config values match what was provided
+        assert warehouse.config["account"] == "test_account"
+        assert warehouse.config["user"] == "test_user"
+        assert warehouse.config["password"] == "test_password"
+        assert warehouse.config["role"] == "test_role"
+        assert warehouse.config["warehouse"] == "test_warehouse"
+        assert warehouse.config["database"] == "test_database"
+        assert warehouse.config["change_tracking_database"] == "test_cdc_db"
+        assert warehouse.config["change_tracking_schema"] == "test_cdc_schema"
+
+    def test_config_with_connection_file_custom_profile(self):
+        """Test that when a connection file is specified with a custom profile in config, those values override the config"""
+        config = {
+            "account": "test_account",
+            "user": "test_user",
+            "password": "test_password",
+            "role": "test_role",
+            "warehouse": "test_warehouse",
+            "database": "test_database",
+            "change_tracking_database": "test_cdc_db",
+            "change_tracking_schema": "test_cdc_schema",
+            "cdc_strategy": "cdc_streams",
+            "warehouse_role": "SOURCE",
+            "replace_existing": False,
+            "connection_file_path": "tests/unit/warehouses/config_files/test_snowflake_connect.toml",
+            "connection_profile_name": "custom_profile"
+        }
+        
+        warehouse = SnowflakeWarehouse(config)
+        
+        # Verify custom profile values overrode the initial config
+        assert warehouse.config["account"] == "custom_account"
+        assert warehouse.config["user"] == "custom_user"
+        assert warehouse.config["password"] == "custom_password"
+        assert warehouse.config["role"] == "custom_role"
+        assert warehouse.config["warehouse"] == "custom_warehouse"
+        assert warehouse.config["database"] == "custom_database"
+        assert warehouse.config["change_tracking_database"] == "custom_cdc_db"
+        assert warehouse.config["change_tracking_schema"] == "custom_cdc_schema"
+
+    def test_config_with_connection_file_default_profile(self):
+        """Test that when a connection file is specified without a profile in config, the default profile is used"""
+        config = {
+            "account": "test_account",
+            "user": "test_user",
+            "password": "test_password",
+            "role": "test_role",
+            "warehouse": "test_warehouse",
+            "database": "test_database",
+            "change_tracking_database": "test_cdc_db",
+            "change_tracking_schema": "test_cdc_schema",
+            "cdc_strategy": "cdc_streams",
+            "warehouse_role": "SOURCE",
+            "replace_existing": False,
+            "connection_file_path": "tests/unit/warehouses/config_files/test_snowflake_connect.toml",
+        }
+        
+        warehouse = SnowflakeWarehouse(config)
+        
+        # Verify default profile values overrode the initial config
+        assert warehouse.config["account"] == "default_account"
+        assert warehouse.config["user"] == "default_user"
+        assert warehouse.config["password"] == "default_password"
+        assert warehouse.config["role"] == "default_role"
+        assert warehouse.config["warehouse"] == "default_warehouse"
+        assert warehouse.config["database"] == "default_database"
+        assert warehouse.config["change_tracking_database"] == "default_cdc_db"
+        assert warehouse.config["change_tracking_schema"] == "default_cdc_schema"
+
+    def test_config_missing_profile(self):
+        """Test that trying to use a non-existent profile raises an error"""
+        config = {
+            "account": "test_account",
+            "user": "test_user",
+            "password": "test_password",
+            "role": "test_role",
+            "connection_file_path": "tests/unit/warehouses/config_files/test_snowflake_connect.toml",
+            "connection_profile_name": "non_existent_profile"
+        }
+        
+        with pytest.raises(ValueError, match="Profile 'non_existent_profile' not found in config file"):
+            SnowflakeWarehouse(config)
+
+    def test_config_nonexistent_toml_file(self):
+        """Test that attempting to load a non-existent TOML file raises an error"""
+        config = {
+            "account": "test_account",
+            "user": "test_user",
+            "password": "test_password",
+            "role": "test_role",
+            "connection_file_path": "nonexistent_file.toml"
+        }
+        
+        with pytest.raises(ValueError, match="Error loading TOML configuration file:"):
+            SnowflakeWarehouse(config)
+
+    def test_config_partial_toml_override(self):
+        """Test that TOML file only overrides specified values and keeps others from original config"""
+        
+        config = {
+            "account": "test_account",
+            "user": "test_user",
+            "password": "test_password",
+            "role": "test_role",
+            "warehouse": "test_warehouse",
+            "database": "test_database",
+            "change_tracking_database": "test_cdc_db",
+            "change_tracking_schema": "test_cdc_schema",
+            "connection_file_path": "tests/unit/warehouses/config_files/test_minimal_snowflake_connect.toml"
+        }
+        
+        warehouse = SnowflakeWarehouse(config)
+        
+        # Verify TOML values override original config
+        assert warehouse.config["account"] == "default_account"
+        assert warehouse.config["user"] == "default_user"
+        # Verify non-overridden values remain from original config
+        assert warehouse.config["password"] == "test_password"
+        assert warehouse.config["role"] == "test_role"
+        assert warehouse.config["warehouse"] == "test_warehouse"
+        assert warehouse.config["database"] == "test_database"
+

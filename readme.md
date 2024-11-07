@@ -328,7 +328,69 @@ If you encounter any issues during installation, please check the following:
 - Make sure all environment variables are set correctly
 - Check that you have the necessary permissions to install packages and create directories
 
-For more detailed troubleshooting, please refer to our [documentation](link_to_docs) or open an issue on our GitHub repository.
+## Configuration
+
+Melchi uses a YAML configuration file to manage connections and specify which tables to replicate. Follow these steps to set up your configuration:
+
+1. Create a `config.yaml` file in the config folder in the root directory.
+
+2. Add the following sections to your `config.yaml`:
+
+```yaml
+source:
+  type: snowflake
+  account: ${SNOWFLAKE_ACCOUNT_IDENTIFIER}
+  user: ${SNOWFLAKE_USER}
+  # For username/password authentication:
+  # Leave authenticator field out completely (do not set it to blank)
+  password: ${SNOWFLAKE_PASSWORD}
+  # For SSO via browser authentication:
+  # authenticator: externalbrowser  # Uncomment this line for SSO
+  role: snowflake_role_to_use
+  warehouse: snowflake_warehouse_to_use
+  change_tracking_database: database_with_change_tracking_schema
+  change_tracking_schema: name_of_change_tracking_schema
+  # Optional: Use a connection profile file for any of the above settings
+  # connection:
+  #   file_path: "path/to/your/config.toml"
+  #   profile_name: "dev"  # Optional - uses default profile if not specified
+
+target:
+  type: duckdb
+  database: /path/to/your/local/duckdb/database.duckdb
+  change_tracking_schema: name_of_change_tracking_schema
+
+tables_config:
+  path: "path/to/your/tables_to_transfer.csv"
+```
+
+Replace placeholders with your actual Snowflake and DuckDB details. The DuckDB database will be created by default at runtime as long as the directory you're referring to exists.
+
+### Authentication
+
+Melchi supports two authentication methods:
+
+1. **Username/Password** (default): 
+   - Requires `password` to be set
+   - Do not include the `authenticator` field at all
+
+2. **SSO via Browser**:
+   - Set `authenticator: externalbrowser`
+   - `password` field will be ignored if present
+
+### Connection Profiles
+
+Optionally, you can store some or all of your Snowflake connection details in a TOML file:
+
+```yaml
+source:
+  connection:
+    file_path: "path/to/your/config.toml"
+    profile_name: "dev"  # Optional - uses default profile if not specified
+```
+
+Any values specified in the connection profile file will override corresponding values in the YAML config. You can specify just a few parameters in the profile file or all of them - it's up to you.
+
 
 ## Usage
 
