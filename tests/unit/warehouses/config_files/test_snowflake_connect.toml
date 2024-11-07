@@ -1,0 +1,20 @@
+# test_snowflake_connect.toml
+[default]
+account = "default_account"
+user = "default_user"
+password = "default_password"
+role = "default_role"
+warehouse = "default_warehouse"
+database = "default_database"
+change_tracking_database = "default_cdc_db"
+change_tracking_schema = "default_cdc_schema"
+
+[custom_profile]
+account = "custom_account"
+user = "custom_user"
+password = "custom_password"
+role = "custom_role"
+warehouse = "custom_warehouse"
+database = "custom_database"
+change_tracking_database = "custom_cdc_db"
+change_tracking_schema = "custom_cdc_schema"
