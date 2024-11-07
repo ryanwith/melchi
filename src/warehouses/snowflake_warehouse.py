@@ -254,10 +254,7 @@ class SnowflakeWarehouse(AbstractWarehouse):
             "records_to_insert": None
         }
 
-        print(f"{table_info["table"]}: 1")
-
         if cdc_type in ("APPEND_ONLY_STREAM", "STANDARD_STREAM"):
-            print(f"{table_info["table"]}: 2")
 
             self._cleanup_records(table_info, existing_etl_ids)
 
@@ -269,8 +266,6 @@ class SnowflakeWarehouse(AbstractWarehouse):
             self.cursor.execute(f"UPDATE {stream_processing_table_name} SET etl_id = '{new_etl_id}'")
 
             if cdc_type == "STANDARD_STREAM":
-                print(f"{table_info["table"]}: 3")
-
                 # For standard streams, get primary keys of records to delete
                 primary_keys = self.get_primary_keys(table_info)
                 if primary_keys == []:
@@ -283,9 +278,6 @@ class SnowflakeWarehouse(AbstractWarehouse):
                 """
                 updates_dict['records_to_delete'] = self.get_df_batches(delete_query)
 
-            print(f"{table_info["table"]}: 4")
-
-
             # Get records to insert (for both stream types)
             insert_query = f"""
                 SELECT * 
@@ -295,7 +287,6 @@ class SnowflakeWarehouse(AbstractWarehouse):
             raw_batches = self.get_df_batches(insert_query)
             processed_batches = []
 
-            print(5)
             for batch in raw_batches:
                 batch.rename(columns={
                     "METADATA$ROW_ID": "MELCHI_ROW_ID",
@@ -305,7 +296,6 @@ class SnowflakeWarehouse(AbstractWarehouse):
             updates_dict['records_to_insert'] = processed_batches
 
         elif cdc_type == "FULL_REFRESH":
-            print(6)
             # For full refresh, we only need insert records
             updates = self.get_df_batches(
                 f"SELECT * FROM {self.get_full_table_name(table_info)}"
@@ -314,7 +304,6 @@ class SnowflakeWarehouse(AbstractWarehouse):
             for df in updates:
                 all_updates.append(df)
             updates_dict['records_to_insert'] = all_updates
-        print(7)
         return updates_dict
 
     def _cleanup_records(self, table_info, existing_etl_ids):
