@@ -5,6 +5,8 @@ from datetime import datetime
 from tests.utils.helpers import normalize_sql
 from src.utils.table_config import get_cdc_type
 
+ETL_ID = 'aaaabbbb-cccc-dddd-eeee-fffffff1'
+
 @pytest.fixture
 def config():
     return {
@@ -368,7 +370,8 @@ def test_create_table_with_default_values(warehouse):
 def test_sync_table_standard_stream_operations_with_pk(warehouse):
     """Test the complete sync operation including temp table, deletes, inserts and cleanup."""
     table_info = {'schema': 'test_schema', 'table': 'test_table', 'cdc_type': 'STANDARD_STREAM'}
-    
+    etl_id = ETL_ID
+
     # Create mock batch with required properties
     mock_batch = Mock()
     mock_batch.columns = []
@@ -400,17 +403,18 @@ def test_sync_table_standard_stream_operations_with_pk(warehouse):
             "records_to_delete": deletes_df
         }
 
-        warehouse.sync_table(table_info, updates_dict)
+        warehouse.sync_table(table_info, updates_dict, etl_id)
         
         expected_calls = [
             f"CREATE OR REPLACE TEMP TABLE test_table_deletes_temp AS (SELECT * FROM batch);",
             """DELETE FROM test_schema.test_table WHERE (id) IN ( SELECT (id) FROM test_table_deletes_temp );""".strip(),
             "DROP TABLE IF EXISTS test_table_deletes_temp;",
             """INSERT INTO test_schema.test_table (SELECT id, name FROM processed_batch);""".strip(),
-            "UPDATE cdc_schema.captured_tables SET updated_at = current_timestamp WHERE table_name = 'test_table' and schema_name = 'test_schema';"
+            "UPDATE cdc_schema.captured_tables SET updated_at = current_timestamp WHERE table_name = 'test_table' AND schema_name = 'test_schema';",
+            f"INSERT INTO cdc_schema.etl_events VALUES ('test_schema', 'test_table',  '{ETL_ID}', current_timestamp::timestamp);"
         ]
-        
-        # assert mock_execute.call_count == 5
+
+        assert mock_execute.call_count == 6
         raw_calls = [args[0] for args, kwargs in mock_execute.call_args_list]
         actual_calls = []
         for call in raw_calls:
@@ -420,13 +424,14 @@ def test_sync_table_standard_stream_operations_with_pk(warehouse):
                 new_item += line.strip() + " "
             actual_calls.append(new_item.strip())
 
-
+        assert mock_execute.call_count == 6
         for expected_sql, actual_sql in zip(expected_calls, actual_calls):
-            assert expected_sql == actual_sql
+            assert normalize_sql(expected_sql) == normalize_sql(actual_sql)
 
 def test_sync_table_full_refresh(warehouse):
     """Test the complete sync operation including temp table, deletes, inserts and cleanup."""
     table_info = {'schema': 'test_schema', 'table': 'test_table', 'cdc_type': 'FULL_REFRESH'}
+    etl_id = ETL_ID
 
     # Create mock batch with required properties
     mock_batch = Mock()
@@ -452,20 +457,26 @@ def test_sync_table_full_refresh(warehouse):
             "records_to_delete": None
         }
 
-        warehouse.sync_table(table_info, updates_dict)
+        warehouse.sync_table(table_info, updates_dict, etl_id)
         
         expected_calls = [
             "TRUNCATE TABLE test_schema.test_table;",
-            "INSERT INTO test_schema.test_table (SELECT id, name FROM processed_batch);"
+            "INSERT INTO test_schema.test_table (SELECT id, name FROM processed_batch);",
+            "UPDATE cdc_schema.captured_tables SET updated_at = current_timestamp WHERE table_name = 'test_table' AND schema_name = 'test_schema';",
+            f"INSERT INTO cdc_schema.etl_events VALUES ('test_schema', 'test_table',  '{ETL_ID}', current_timestamp::timestamp);"
+
         ]
-        
+
+        assert mock_execute.call_count == 4
         actual_calls = [args[0] for args, kwargs in mock_execute.call_args_list]
         for expected_sql, actual_sql in zip(expected_calls, actual_calls):
-            assert expected_sql == actual_sql
+            assert normalize_sql(expected_sql) == normalize_sql(actual_sql)
+
 
 def test_sync_table_standard_stream_operations_with_two_pk(warehouse):
     """Test the complete sync operation including temp table, deletes, inserts and cleanup."""
     table_info = {'schema': 'test_schema', 'table': 'test_table', 'cdc_type': 'STANDARD_STREAM'}
+    etl_id = ETL_ID
 
     # Create mock batch with required properties
     mock_batch = Mock()
@@ -499,7 +510,7 @@ def test_sync_table_standard_stream_operations_with_two_pk(warehouse):
             "records_to_delete": deletes_df
         }
 
-        warehouse.sync_table(table_info, updates_dict)
+        warehouse.sync_table(table_info, updates_dict, etl_id)
 
 
         expected_calls = [
@@ -507,10 +518,12 @@ def test_sync_table_standard_stream_operations_with_two_pk(warehouse):
             """DELETE FROM test_schema.test_table WHERE (id, id2) IN ( SELECT (id, id2) FROM test_table_deletes_temp );""".strip(),
             "DROP TABLE IF EXISTS test_table_deletes_temp;",
             """INSERT INTO test_schema.test_table (SELECT id, id2, name FROM processed_batch);""".strip(),
-            "UPDATE cdc_schema.captured_tables SET updated_at = current_timestamp WHERE table_name = 'test_table' and schema_name = 'test_schema';"
+            "UPDATE cdc_schema.captured_tables SET updated_at = current_timestamp WHERE table_name = 'test_table' AND schema_name = 'test_schema';",
+            f"INSERT INTO cdc_schema.etl_events VALUES ('test_schema', 'test_table',  '{ETL_ID}', current_timestamp::timestamp);"
         ]
         
-        # assert mock_execute.call_count == 5
+
+        assert mock_execute.call_count == 6
         raw_calls = [args[0] for args, kwargs in mock_execute.call_args_list]
         actual_calls = []
         for call in raw_calls:
@@ -521,12 +534,14 @@ def test_sync_table_standard_stream_operations_with_two_pk(warehouse):
             actual_calls.append(new_item.strip())
 
         for expected_sql, actual_sql in zip(expected_calls, actual_calls):
-            assert expected_sql == actual_sql
+            assert normalize_sql(expected_sql) == normalize_sql(actual_sql)
 
 
 def test_sync_table_append_only_stream(warehouse):
     """Test the complete sync operation including temp table, deletes, inserts and cleanup."""
     table_info = {'schema': 'test_schema', 'table': 'test_table', 'cdc_type': 'APPEND_ONLY_STREAM'}
+    etl_id = ETL_ID
+
 
     # Create mock batch with required properties
     mock_batch = Mock()
@@ -552,15 +567,17 @@ def test_sync_table_append_only_stream(warehouse):
             "records_to_insert": inserts_df,
             "records_to_delete": None
         }
-        warehouse.sync_table(table_info, updates_dict)
+        warehouse.sync_table(table_info, updates_dict, etl_id)
 
 
         expected_calls = [
             """INSERT INTO test_schema.test_table (SELECT name, value FROM processed_batch);""".strip(),
-            "UPDATE cdc_schema.captured_tables SET updated_at = current_timestamp WHERE table_name = 'test_table' and schema_name = 'test_schema';"
+            "UPDATE cdc_schema.captured_tables SET updated_at = current_timestamp WHERE table_name = 'test_table' AND schema_name = 'test_schema';",
+            f"INSERT INTO cdc_schema.etl_events VALUES ('test_schema', 'test_table',  '{ETL_ID}', current_timestamp::timestamp);"
+
         ]
         
-        # assert mock_execute.call_count == 5
+        assert mock_execute.call_count == 3
         raw_calls = [args[0] for args, kwargs in mock_execute.call_args_list]
         actual_calls = []
         for call in raw_calls:
@@ -571,7 +588,7 @@ def test_sync_table_append_only_stream(warehouse):
             actual_calls.append(new_item.strip())
 
         for expected_sql, actual_sql in zip(expected_calls, actual_calls):
-            assert expected_sql == actual_sql
+            assert normalize_sql(expected_sql) == normalize_sql(actual_sql)
 
 def test_sync_table_no_rows(warehouse):
     """Test sync operation when table has no primary keys."""
@@ -581,6 +598,7 @@ def test_sync_table_no_rows(warehouse):
 
     mock_batch = Mock()
     mock_batch.columns = []
+    etl_id = ETL_ID
 
     # Create mock DataFrames with batches
     insert_batches = Mock()
@@ -604,20 +622,26 @@ def test_sync_table_no_rows(warehouse):
 
     with patch.object(warehouse.connection, 'execute') as mock_execute:
 
-        warehouse.sync_table(standard_stream_table_info, updates_dict_with_all)
-        warehouse.sync_table(append_only_stream_table_info, updates_dict_with_no_deletes)
-        warehouse.sync_table(full_refresh_table_info, updates_dict_with_no_deletes)
+        warehouse.sync_table(standard_stream_table_info, updates_dict_with_all, etl_id)
+        warehouse.sync_table(append_only_stream_table_info, updates_dict_with_no_deletes, etl_id)
+        warehouse.sync_table(full_refresh_table_info, updates_dict_with_no_deletes, etl_id)
             
         actual_calls = [args[0] for args, kwargs in mock_execute.call_args_list]
+
         expected_calls = [
-            "UPDATE cdc_schema.captured_tables SET updated_at = current_timestamp WHERE table_name = 'standard_stream_table' and schema_name = 'test_schema';",
-            "UPDATE cdc_schema.captured_tables SET updated_at = current_timestamp WHERE table_name = 'append_only_stream_table' and schema_name = 'test_schema';",
+            "UPDATE cdc_schema.captured_tables SET updated_at = current_timestamp WHERE table_name = 'standard_stream_table' AND schema_name = 'test_schema';",
+            f"INSERT INTO cdc_schema.etl_events VALUES ('test_schema', 'standard_stream_table', '{ETL_ID}', current_timestamp::timestamp);",
+            "UPDATE cdc_schema.captured_tables SET updated_at = current_timestamp WHERE table_name = 'append_only_stream_table' AND schema_name = 'test_schema';",
+            f"INSERT INTO cdc_schema.etl_events VALUES ('test_schema', 'append_only_stream_table', '{ETL_ID}', current_timestamp::timestamp);",
             "TRUNCATE TABLE test_schema.full_refresh_table;",
-            "UPDATE cdc_schema.captured_tables SET updated_at = current_timestamp WHERE table_name = 'full_refresh_table' and schema_name = 'test_schema';"
+            "UPDATE cdc_schema.captured_tables SET updated_at = current_timestamp WHERE table_name = 'full_refresh_table' AND schema_name = 'test_schema';",
+            f"INSERT INTO cdc_schema.etl_events VALUES ('test_schema', 'full_refresh_table',  '{ETL_ID}', current_timestamp::timestamp);"
         ]
 
+        assert mock_execute.call_count == 7
+
         for expected_sql, actual_sql in zip(expected_calls, actual_calls):
-            assert expected_sql == actual_sql
+            assert normalize_sql(expected_sql) == normalize_sql(actual_sql)
 
 def test_get_primary_keys(warehouse):
     mock_cursor = Mock()

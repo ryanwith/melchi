@@ -404,7 +404,9 @@ class DuckDBWarehouse(AbstractWarehouse):
         table = table_info["table"]
         schema = table_info["schema"]
         query_text = f"SELECT etl_id FROM {change_tracking_schema}.etl_events where schema_name = '{schema}' and table_name = '{table}' group by 1;"
-        etl_ids = self.execute_query(query_text)
+        print(query_text)
+        etl_ids = self.execute_query(query_text, True)
+        print(etl_ids)
         etl_ids = [] if etl_ids is None else etl_ids
         return [row[0] for row in etl_ids] 
 
