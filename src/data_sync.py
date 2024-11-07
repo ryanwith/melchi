@@ -26,15 +26,10 @@ def sync_data(config):
 def sync_table(source_warehouse, target_warehouse, table_info):
     try:
         etl_id = uuid4()
-        print(table_info)
-        print(etl_id)
         target_warehouse.begin_transaction()
         existing_etl_ids = target_warehouse.get_etl_ids(table_info)
-        print(f"existing_etl_ids: {existing_etl_ids}")
         updates_dict = source_warehouse.get_updates(table_info, existing_etl_ids, etl_id)
-        print(f"sync table started for {table_info['table']}")
         target_warehouse.sync_table(table_info, updates_dict, etl_id)
-        print("sync table complete")
         target_warehouse.commit_transaction()
 
         # if there are any issues with commiting into the target database this won't be executed
