@@ -289,8 +289,6 @@ class TestSnowflakeWarehouse:
             call('ALTER TABLE test_cdc_db.test_cdc_schema.test_db$test_schema$test_table_processing ADD COLUMN IF NOT EXISTS etl_id varchar;')
         ]
 
-        for thing in mock_cursor.execute.call_args_list:
-            print(thing)
         assert mock_cursor.execute.call_args_list == expected_calls
 
     @patch('snowflake.connector.connect')
