@@ -49,14 +49,6 @@ class DuckDBWarehouse(AbstractWarehouse):
 
     # SCHEMA AND TABLE MANAGEMENT
 
-    def get_schema(self, table_info):
-        """Returns array of schema dictionaries as provided in format_schema_row."""
-        result = self.connection.execute(f"PRAGMA table_info('{self.get_full_table_name(table_info)}');")
-        rows = []
-        for row in result.fetchall():
-            rows.append(self.format_schema_row(row))
-        return rows
-
     def create_table(self, table_info, source_schema, target_schema):
         """
         Creates table with target_schema and adds melchi_id if no primary keys.
@@ -126,51 +118,9 @@ class DuckDBWarehouse(AbstractWarehouse):
         for query in update_logs:
             self.connection.execute(query)
 
-    def get_full_table_name(self, table_info):
-        """Returns fully qualified table name."""
-        return f"{table_info['schema']}.{table_info['table']}"
-
-    def replace_existing(self):
-        """Returns whether existing tables should be replaced."""
-        return self.config['replace_existing']
-
-    def format_schema_row(self, row):
-        """Formats a column for a schema."""
-        return {
-            "name": row[1],
-            "type": row[2],
-            "nullable": True if row[3] == "TRUE".upper() else False,
-            "default_value": row[4],
-            "primary_key": True if row[5] == "TRUE".upper() else False,
-        }
-
-    def generate_create_table_statement(self, table_info, schema):
-        """Generates SQL statement for table creation."""
-        if self.replace_existing() == True:
-            create_statement = f"CREATE OR REPLACE TABLE {self.get_full_table_name(table_info)} "
-        else:
-            create_statement = f"CREATE TABLE IF NOT EXISTS {self.get_full_table_name(table_info)} "
-        column_statements = []
-        for col in schema:
-            column_statement = f"{col['name']} {col['type']}"
-            column_statement += " NOT NULL" if col['nullable'] == False else ""
-            column_statements.append(column_statement)
-        full_create_statement = f"{create_statement}({', '.join(column_statements)});"
-
-        return full_create_statement
-
-    def contains_spatial(self, schema):
-        """Checks if schema contains spatial data types."""
-        for column in schema:
-            if column['type'] == "GEOMETRY":
-                return True
-        return False
 
     # CHANGE TRACKING MANAGEMENT
 
-    def get_change_tracking_schema_full_name(self):
-        """Returns the change tracking schema name."""
-        return self.config['change_tracking_schema']
 
     def setup_environment(self):
         """Sets up environment based on warehouse role."""
@@ -221,7 +171,7 @@ class DuckDBWarehouse(AbstractWarehouse):
         if data_inserted == False:
             print(f"No records ingested into {full_table_name}.")
 
-        self._update_cdc_trackers(table_info, etl_id)
+        self.update_cdc_trackers(table_info, etl_id)
         # update info of last update time
 
     def _process_delete_batches(self, deletes_df, table_info):
@@ -279,7 +229,7 @@ class DuckDBWarehouse(AbstractWarehouse):
     def cleanup_source(self, table_info):
         pass
 
-    def _update_cdc_trackers(self, table_info, etl_id):
+    def update_cdc_trackers(self, table_info, etl_id):
         """Updates the captured_tables table with the time the last CDC operation ran."""
 
         # update captured_tables
@@ -295,13 +245,7 @@ class DuckDBWarehouse(AbstractWarehouse):
         self.execute_query(update_captured_tables_query)
         self.execute_query(update_etl_events_query)
 
-    def get_primary_keys(self, table_info):
-        """Gets the primary keys for a specific table."""
-        captured_tables = f"{self.get_change_tracking_schema_full_name()}.captured_tables"
-        get_primary_keys_query = f"""SELECT primary_keys FROM {captured_tables}
-                WHERE table_name = '{table_info['table']}' and schema_name = '{table_info['schema']}'"""
-        primary_keys = sorted(self.connection.execute(get_primary_keys_query).fetchone()[0])
-        return primary_keys
+
     
     def get_df_batches(self, query_text):
         try:
@@ -395,14 +339,7 @@ class DuckDBWarehouse(AbstractWarehouse):
 
         return df
     
-    def get_etl_ids(self, table_info):
-        change_tracking_schema = self.get_change_tracking_schema_full_name()
-        table = table_info["table"]
-        schema = table_info["schema"]
-        query_text = f"SELECT etl_id FROM {change_tracking_schema}.etl_events where schema_name = '{schema}' and table_name = '{table}' group by 1;"
-        etl_ids = self.execute_query(query_text, True)
-        etl_ids = [] if etl_ids is None else etl_ids
-        return [row[0] for row in etl_ids] 
+
 
     # UTILITY METHODS
 
@@ -412,27 +349,125 @@ class DuckDBWarehouse(AbstractWarehouse):
         if return_results == True:
             return self.connection.fetchall()
 
-    def convert_list_to_duckdb_syntax(self, python_list):
-        """Converts Python list to DuckDB array syntax."""
-        quoted_items = [f"'{item}'" for item in python_list]  # or map(lambda x: f"'{x}'", python_list)
-        joined_items = ', '.join(quoted_items)
-        return f"[{joined_items}]"    
+
     
+
+        
+    def generate_source_sql(self):
+        pass
+
+
+    
+    def set_timezone(self, tz):
+        self.connection.execute(f"SET TIMEZONE = '{tz}';")
+    
+
+    
+    # warehouse information methods
+
+    def get_auth_type(self):
+        return "USERNAME_AND_PASSWORD"
+    
+    def get_supported_cdc_types(self):
+        return ()
+    
+    def replace_existing(self):
+        """Returns whether existing tables should be replaced."""
+        return self.config['replace_existing']
+    
+    # table information methods
+
+    def table_exists(self, table_info):
+        table = table_info['table']
+        schema = table_info['schema']
+        query = f"SELECT * FROM information_schema.tables WHERE table_schema = '{schema}' AND table_name = '{table}'"
+        results = self.connection.execute(query).fetchone()
+        return True if results else False    
+
+    def get_etl_ids(self, table_info):
+        change_tracking_schema = self.get_change_tracking_schema_full_name()
+        table = table_info["table"]
+        schema = table_info["schema"]
+        query_text = f"SELECT etl_id FROM {change_tracking_schema}.etl_events where schema_name = '{schema}' and table_name = '{table}' group by 1;"
+        etl_ids = self.execute_query(query_text, True)
+        etl_ids = [] if etl_ids is None else etl_ids
+        return [row[0] for row in etl_ids] 
+
+    def get_primary_keys(self, table_info):
+        """Gets the primary keys for a specific table."""
+        captured_tables = f"{self.get_change_tracking_schema_full_name()}.captured_tables"
+        get_primary_keys_query = f"""SELECT primary_keys FROM {captured_tables}
+                WHERE table_name = '{table_info['table']}' and schema_name = '{table_info['schema']}'"""
+        primary_keys = sorted(self.connection.execute(get_primary_keys_query).fetchone()[0])
+        return primary_keys
+    
+    def get_schema(self, table_info):
+        """Returns array of schema dictionaries as provided in format_schema_row."""
+        result = self.connection.execute(f"PRAGMA table_info('{self.get_full_table_name(table_info)}');")
+        rows = []
+        for row in result.fetchall():
+            rows.append(self.format_schema_row(row))
+        return rows
+
+    # formatting methods
+
     def format_value_for_insert(self, value):
         if type(value) == str:
             return value.replace("'", "''")
         else:
             return value
         
-    def generate_source_sql(self):
-        pass
-
     def format_binary_for_comparison(self, value):
         return value.hex()
     
-    def set_timezone(self, tz):
-        self.connection.execute(f"SET TIMEZONE = '{tz}';")
+    def convert_list_to_duckdb_syntax(self, python_list):
+        """Converts Python list to DuckDB array syntax."""
+        quoted_items = [f"'{item}'" for item in python_list]  # or map(lambda x: f"'{x}'", python_list)
+        joined_items = ', '.join(quoted_items)
+        return f"[{joined_items}]"    
 
+
+    def get_full_table_name(self, table_info):
+        """Returns fully qualified table name."""
+        return f"{table_info['schema']}.{table_info['table']}"
+
+    def format_schema_row(self, row):
+        """Formats a column for a schema."""
+        return {
+            "name": row[1],
+            "type": row[2],
+            "nullable": True if row[3] == "TRUE".upper() else False,
+            "default_value": row[4],
+            "primary_key": True if row[5] == "TRUE".upper() else False,
+        }
+
+    def generate_create_table_statement(self, table_info, schema):
+        """Generates SQL statement for table creation."""
+        if self.replace_existing() == True:
+            create_statement = f"CREATE OR REPLACE TABLE {self.get_full_table_name(table_info)} "
+        else:
+            create_statement = f"CREATE TABLE IF NOT EXISTS {self.get_full_table_name(table_info)} "
+        column_statements = []
+        for col in schema:
+            column_statement = f"{col['name']} {col['type']}"
+            column_statement += " NOT NULL" if col['nullable'] == False else ""
+            column_statements.append(column_statement)
+        full_create_statement = f"{create_statement}({', '.join(column_statements)});"
+
+        return full_create_statement
+
+    def contains_spatial(self, schema):
+        """Checks if schema contains spatial data types."""
+        for column in schema:
+            if column['type'] == "GEOMETRY":
+                return True
+        return False
+    
+
+    def get_change_tracking_schema_full_name(self):
+        """Returns the change tracking schema name."""
+        return self.config['change_tracking_schema']
+    
     def normalize_wkt_spacing(self, wkt_str):
         if not isinstance(wkt_str, str):
                 raise ValueError(f"Expected string WKT geometry, got {type(wkt_str)}: {wkt_str}")
@@ -444,13 +479,3 @@ class DuckDBWarehouse(AbstractWarehouse):
         geom_type = parts[0].strip()
         coordinates = parts[1]
         return f"{geom_type}({coordinates}"
-    
-    def table_exists(self, table_info):
-        table = table_info['table']
-        schema = table_info['schema']
-        query = f"SELECT * FROM information_schema.tables WHERE table_schema = '{schema}' AND table_name = '{table}'"
-        results = self.connection.execute(query).fetchone()
-        return True if results else False
-    
-    def get_auth_type(self):
-        return "USERNAME_AND_PASSWORD"

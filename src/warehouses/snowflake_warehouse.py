@@ -60,7 +60,6 @@ class SnowflakeWarehouse(AbstractWarehouse):
 
 
 
-
     # CONNECTION METHODS
     
     def connect(self, role = None):
@@ -95,6 +94,9 @@ class SnowflakeWarehouse(AbstractWarehouse):
             self.connection.close()
             self.connection = None
 
+
+
+
     # TRANSACTION MANAGEMENT
     
     def begin_transaction(self):
@@ -106,49 +108,17 @@ class SnowflakeWarehouse(AbstractWarehouse):
     def rollback_transaction(self):
         self.connection.rollback()
 
+
+
+
     # SCHEMA AND TABLE MANAGEMENT
     
-    def get_schema(self, table_info):
-        # input: table_info dictionary containing keys database, schema, and table
-        # output: array of schema dictionaries as provided in format_schema_row 
-        if self.connection == None:
-            raise ConnectionError("You have not established a connection to the database")
-        elif self.cursor == None:
-            raise ConnectionError("You do not have a valid cursor")
-        
-        self.cursor.execute(f"DESC TABLE {self.get_full_table_name(table_info)}")
-        schema = []
-        for row in self.cursor.fetchall():
-            schema.append(self.format_schema_row(row))
-        return schema
 
-    def create_table(self, table_info, source_schema, target_schema):
-        # Implementation for creating a table in Snowflake
-        pass
 
-    def get_full_table_name(self, table_info):
-        database = table_info['database']
-        schema = table_info['schema']
-        table = table_info['table']
-        return f"{database}.{schema}.{table}"
-    
-    def replace_existing(self):
-        return self.config['replace_existing']
 
-    def format_schema_row(self, row):
-        # input: row of the schema as provided in a cursor
-        return {
-            "name": row[0],
-            "type": row[1],
-            "nullable": True if row[3] == "Y" else False,
-            "default_value": row[4],
-            "primary_key": True if row[5] == "Y" else False
-        }
 
-    # CHANGE TRACKING MANAGEMENT
-    
-    def get_change_tracking_schema_full_name(self):
-        return f"{self.config['change_tracking_database']}.{self.config['change_tracking_schema']}"
+
+    # SETUP ENVIROMENT METHODS
     
     def setup_environment(self, tables_to_transfer = None):
         if self.config['warehouse_role'] == "TARGET":
@@ -174,20 +144,6 @@ class SnowflakeWarehouse(AbstractWarehouse):
 
     def setup_target_environment(self):
         pass
-
-    def get_stream_name(self, table_info):
-        """Returns the stream name for the given table."""
-        database = table_info['database']
-        schema = table_info['schema']
-        table = table_info['table']
-        return f"{self.get_change_tracking_schema_full_name()}.{database}${schema}${table}"
-    
-    def get_stream_processing_table_name(self, table_info):
-        """Returns the processing table name for the given table's stream."""
-        database = table_info['database']
-        schema = table_info['schema']
-        table = table_info['table']
-        return f"{self.get_change_tracking_schema_full_name()}.{database}${schema}${table}_processing"
 
     def create_stream_objects(self, table_info):
         """
@@ -216,9 +172,25 @@ class SnowflakeWarehouse(AbstractWarehouse):
         for query in create_stream_processing_table_queries:
             self.cursor.execute(query)
 
+    def create_table(self, table_info, source_schema, target_schema):
+        # Implementation for creating a table in Snowflake
+        pass
+
+
+
+
 
     # DATA SYNCHRONIZATION
+
+    def truncate_table(self, table_info):
+        truncate_query = f"TRUNCATE TABLE {self.get_full_table_name(table_info)};"
+        self.cursor.execute(truncate_query)
     
+    def get_batches_for_full_refresh(self, table_info):
+        query = f"SELECT * FROM {self.get_full_table_name(table_info)};"
+        self.cursor.execute(query)
+        return self.cursor.fetch_pandas_batches()
+
     def sync_table(self, table_info, updates_dict):
         raise NotImplementedError("Snowflake is not yet supported as a target")
 
@@ -336,9 +308,7 @@ class SnowflakeWarehouse(AbstractWarehouse):
             print(f"Error executing query: {str(e)}")
             raise
 
-    def get_primary_keys(self, table_info):
-        schema = self.get_schema(table_info)
-        return sorted([col['name'] for col in schema if col['primary_key']])
+
 
     def generate_source_sql(self, tables):
         role = self.config['role']
@@ -407,17 +377,6 @@ class SnowflakeWarehouse(AbstractWarehouse):
         df = [df for df in self.get_df_batches(query)][0]
         processed_df = TypeMapper.process_df_snowflake_to_duckdb(df)
 
-        def normalize_binary(value):
-            """Convert binary data to consistent bytes representation"""
-            if pd.isna(value):
-                return None
-            import base64
-            if isinstance(value, bytes):
-                return str(value)  # Gets the b'...' representation
-            if isinstance(value, str) and value.endswith('=='): # base64
-                return str(base64.b64decode(value))  # Convert to b'...' representation
-            return str(value)
-
         # Convert specific columns to strings consistently
         for col in processed_df.columns:
             if processed_df[col].dtype.name.startswith('decimal'):
@@ -456,11 +415,87 @@ class SnowflakeWarehouse(AbstractWarehouse):
                 problems.append(f"{self.get_full_table_name(table_info)} has a geometry or geography column.  Snowflake does not support these in standard streams.  Use append_only_streams or full_refresh for tables with these columns.")
         return problems
 
+
+    # warehouse information methods
+
+    def get_auth_type(self):
+        return self.config.get("authenticator", "snowflake")
+
+    def get_supported_cdc_types(self):
+        return ("STANDARD_STREAM", "APPEND_ONLY_STREAM", "FULL_REFRESH")
+    
+    def replace_existing(self):
+        return self.config['replace_existing']1
+    
+    # table information methods
+
+    def get_schema(self, table_info):
+        # input: table_info dictionary containing keys database, schema, and table
+        # output: array of schema dictionaries as provided in format_schema_row 
+        if self.connection == None:
+            raise ConnectionError("You have not established a connection to the database")
+        elif self.cursor == None:
+            raise ConnectionError("You do not have a valid cursor")
+        
+        self.cursor.execute(f"DESC TABLE {self.get_full_table_name(table_info)}")
+        schema = []
+        for row in self.cursor.fetchall():
+            schema.append(self.format_schema_row(row))
+        return schema
+
     def has_geometry_or_geography_column(self, schema):
         for col in schema:
             if col['type'] in ("GEOMETRY", "GEOGRAPHY"):
                 return True
         return False
+    
+    def get_primary_keys(self, table_info):
+        schema = self.get_schema(table_info)
+        return sorted([col['name'] for col in schema if col['primary_key']])
 
-    def get_auth_type(self):
-        return self.config.get("authenticator", "snowflake")
+    # formatting methods
+
+    def get_full_table_name(self, table_info):
+        database = table_info['database']
+        schema = table_info['schema']
+        table = table_info['table']
+        return f"{database}.{schema}.{table}"
+    
+    def get_stream_name(self, table_info):
+        """Returns the stream name for the given table."""
+        database = table_info['database']
+        schema = table_info['schema']
+        table = table_info['table']
+        return f"{self.get_change_tracking_schema_full_name()}.{database}${schema}${table}"
+    
+    def get_stream_processing_table_name(self, table_info):
+        """Returns the processing table name for the given table's stream."""
+        database = table_info['database']
+        schema = table_info['schema']
+        table = table_info['table']
+        return f"{self.get_change_tracking_schema_full_name()}.{database}${schema}${table}_processing"
+    
+    def get_change_tracking_schema_full_name(self):
+        return f"{self.config['change_tracking_database']}.{self.config['change_tracking_schema']}"
+    
+    def format_schema_row(self, row):
+        # input: row of the schema as provided in a cursor
+        return {
+            "name": row[0],
+            "type": row[1],
+            "nullable": True if row[3] == "Y" else False,
+            "default_value": row[4],
+            "primary_key": True if row[5] == "Y" else False
+        }
+    
+    def normalize_binary(value):
+        """Convert binary data to consistent bytes representation"""
+        if pd.isna(value):
+            return None
+        import base64
+        if isinstance(value, bytes):
+            return str(value)  # Gets the b'...' representation
+        if isinstance(value, str) and value.endswith('=='): # base64
+            return str(base64.b64decode(value))  # Convert to b'...' representation
+        return str(value)
+    # get information about warehouse methods
