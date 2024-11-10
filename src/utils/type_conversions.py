@@ -48,3 +48,14 @@ def process_geometry_columns(df):
         df_copy[col] = df_copy[col].apply(convert_geojson_to_wkt)
     
     return df_copy
+
+def normalize_binary(value):
+    """Convert binary data to consistent bytes representation"""
+    if pd.isna(value):
+        return None
+    import base64
+    if isinstance(value, bytes):
+        return str(value)  # Gets the b'...' representation
+    if isinstance(value, str) and value.endswith('=='): # base64
+        return str(base64.b64decode(value))  # Convert to b'...' representation
+    return str(value)

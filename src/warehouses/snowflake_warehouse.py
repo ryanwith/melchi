@@ -4,6 +4,7 @@ import snowflake.connector
 import pandas as pd
 from .abstract_warehouse import AbstractWarehouse
 from ..utils.table_config import get_cdc_type
+from ..utils.type_conversions import normalize_binary
 import re
 from .type_mappings import TypeMapper
 
@@ -58,8 +59,6 @@ class SnowflakeWarehouse(AbstractWarehouse):
             except Exception as e:
                 raise ValueError(f"Error loading TOML configuration file: {str(e)}")
 
-
-
     # CONNECTION METHODS
     
     def connect(self, role = None):
@@ -94,9 +93,6 @@ class SnowflakeWarehouse(AbstractWarehouse):
             self.connection.close()
             self.connection = None
 
-
-
-
     # TRANSACTION MANAGEMENT
     
     def begin_transaction(self):
@@ -110,25 +106,17 @@ class SnowflakeWarehouse(AbstractWarehouse):
 
 
 
-
-    # SCHEMA AND TABLE MANAGEMENT
-    
-
-
-
-
-
-    # SETUP ENVIROMENT METHODS
+    # SETUP ENVIROMENT METHODS (DDLs)
     
     def setup_environment(self, tables_to_transfer = None):
         if self.config['warehouse_role'] == "TARGET":
             raise NotImplementedError(f"Snowflake is not yet supported as a target environment")
         elif self.config['warehouse_role'] == "SOURCE":
-            self.setup_source_environment(tables_to_transfer)
+            self._setup_source_environment(tables_to_transfer)
         else:
             raise ValueError(f"Unknown warehouse role: {self.config['warehoues_role']}")
 
-    def setup_source_environment(self, tables_to_transfer):
+    def _setup_source_environment(self, tables_to_transfer):
         """Creates streams and CDC tables for each table to be transferred."""
         if tables_to_transfer == []:
             raise Exception("No tables to transfer found")
@@ -140,12 +128,12 @@ class SnowflakeWarehouse(AbstractWarehouse):
         for table_info in tables_to_transfer:
             cdc_type = table_info.get("cdc_type", "FULL_REFRESH").upper()
             if cdc_type in ("STANDARD_STREAM", "APPEND_ONLY_STREAM"):
-                self.create_stream_objects(table_info)
+                self._create_stream_objects(table_info)
 
-    def setup_target_environment(self):
+    def _setup_target_environment(self):
         pass
 
-    def create_stream_objects(self, table_info):
+    def _create_stream_objects(self, table_info):
         """
         Creates a snowflake stream and permanent table for CDC tracking.
         Generates unique names for stream and processing table.
@@ -176,20 +164,88 @@ class SnowflakeWarehouse(AbstractWarehouse):
         # Implementation for creating a table in Snowflake
         pass
 
+    # SYNC DATA METHODS
+    def prepare_stream_ingestion(self, table_info, etl_id, completed_transaction_etl_ids):
 
+        self._remove_successfully_transferred_records(table_info, completed_transaction_etl_ids)
 
+        stream_processing_table_name = self.get_stream_processing_table_name(table_info)
+        stream_name = self.get_stream_name(table_info)
 
+        # Remove records that already successfully transferred
+        if len(completed_transaction_etl_ids) != 0:
+            formatted_ids = [f"'{id}'" for id in completed_transaction_etl_ids]
+            formatted_where_clause = f"WHERE etl_id in ({', '.join(formatted_ids)})"
+            delete_transferred_records_query = f"DELETE FROM {self.get_stream_processing_table_name(table_info)} {formatted_where_clause}"
+            self.execute_query(delete_transferred_records_query)
 
-    # DATA SYNCHRONIZATION
-
+        # Load stream data into processing table
+        self.cursor.execute(f"INSERT INTO {stream_processing_table_name} SELECT *, '{etl_id}' FROM {stream_name};")
+        self.cursor.execute(f"UPDATE {stream_processing_table_name} SET etl_id = '{etl_id}';")
+        
     def truncate_table(self, table_info):
         truncate_query = f"TRUNCATE TABLE {self.get_full_table_name(table_info)};"
         self.cursor.execute(truncate_query)
     
+    def get_df_batches(self, query_text):
+        """
+        Executes a query and returns results as batches of DataFrames.
+        Uses configured batch size if provided, otherwise uses Snowflake's default batching.
+        """
+        try:
+            cursor = self.connection.cursor()
+            cursor.execute(query_text)
+            return cursor.fetch_pandas_batches()
+        except Exception as e:
+            print(f"Error executing query: {str(e)}")
+            raise
+
+    def process_insert_batches(self, table_info, raw_df_batches, df_processing_function):
+        pass
+
+    def process_delete_batches(self, table_info, raw_df_batches, df_processing_function):
+        pass
+
     def get_batches_for_full_refresh(self, table_info):
         query = f"SELECT * FROM {self.get_full_table_name(table_info)};"
         self.cursor.execute(query)
         return self.cursor.fetch_pandas_batches()
+
+    def get_delete_batches_for_stream(self, table_info):
+        primary_keys = self.get_primary_keys(table_info)
+
+        if primary_keys == []:
+            primary_keys = ['METADATA$ROW_ID as MELCHI_ROW_ID']
+
+        delete_query = f"""
+            SELECT {", ".join(primary_keys)}
+            FROM {self.get_stream_processing_table_name(table_info)}
+            WHERE "METADATA$ACTION" = 'DELETE';
+        """
+        self.cursor.execute(delete_query)
+        return self.cursor.fetch_pandas_batches()
+
+    def get_insert_batches_for_stream(self, table_info):
+        column_names = self._get_column_names(table_info)
+        column_names.append("METADATA$ROW_ID as MELCHI_ROW_ID")
+        
+        insert_query = f"""
+            SELECT {', '.join(column_names)} 
+            FROM {self.get_stream_processing_table_name(table_info)}
+            WHERE "METADATA$ACTION" = 'INSERT';
+        """    
+
+        self.cursor.execute(insert_query)
+        return self.cursor.fetch_pandas_batches()   
+
+    # removes any records from the stream processing table associated with an already successful ETL
+    def _remove_successfully_transferred_records(self, table_info, completed_transaction_etl_ids):
+        if len(completed_transaction_etl_ids) == 0:
+            return
+        formatted_ids = [f"'{id}'" for id in completed_transaction_etl_ids]
+        formatted_where_clause = f"WHERE etl_id in ({', '.join(formatted_ids)})"
+        delete_transferred_records_query = f"DELETE FROM {self.get_stream_processing_table_name(table_info)} {formatted_where_clause}"
+        self.execute_query(delete_transferred_records_query)
 
     def sync_table(self, table_info, updates_dict):
         raise NotImplementedError("Snowflake is not yet supported as a target")
@@ -213,102 +269,38 @@ class SnowflakeWarehouse(AbstractWarehouse):
                     # Re-raise any other exceptions
                     raise
 
-    def get_updates(self, table_info, existing_etl_ids, new_etl_id):
-        """
-        Retrieves CDC data from stream table and returns changes in a dictionary format.
-        For standard streams: returns both delete and insert records
-        For append-only streams: returns only insert records
-        For full refresh: returns only insert records
-        """
-        cdc_type = get_cdc_type(table_info)
-        updates_dict = {
-            "records_to_delete": None,
-            "records_to_insert": None
-        }
-
-        if cdc_type in ("APPEND_ONLY_STREAM", "STANDARD_STREAM"):
-
-            self._cleanup_records(table_info, existing_etl_ids)
-
-            stream_processing_table_name = self.get_stream_processing_table_name(table_info)
-            stream_name = self.get_stream_name(table_info)
-            
-            # Load stream data into processing table
-            self.cursor.execute(f"INSERT INTO {stream_processing_table_name} SELECT *, '{new_etl_id}' FROM {stream_name};")
-            self.cursor.execute(f"UPDATE {stream_processing_table_name} SET etl_id = '{new_etl_id}'")
-
-            if cdc_type == "STANDARD_STREAM":
-                # For standard streams, get primary keys of records to delete
-                primary_keys = self.get_primary_keys(table_info)
-                if primary_keys == []:
-                    primary_keys = ['METADATA$ROW_ID as MELCHI_ROW_ID']
-                pk_columns = ", ".join(primary_keys)
-                delete_query = f"""
-                    SELECT {pk_columns}
-                    FROM {stream_processing_table_name}
-                    WHERE "METADATA$ACTION" = 'DELETE'
-                """
-                updates_dict['records_to_delete'] = self.get_df_batches(delete_query)
-
-            # Get records to insert (for both stream types)
-            insert_query = f"""
-                SELECT * 
-                FROM {stream_processing_table_name}
-                WHERE "METADATA$ACTION" = 'INSERT'
-            """
-            raw_batches = self.get_df_batches(insert_query)
-            processed_batches = []
-
-            for batch in raw_batches:
-                batch.rename(columns={
-                    "METADATA$ROW_ID": "MELCHI_ROW_ID",
-                    "METADATA$ACTION": "MELCHI_METADATA_ACTION"
-                }, inplace=True)
-                processed_batches.append(batch)
-            updates_dict['records_to_insert'] = processed_batches
-
-        elif cdc_type == "FULL_REFRESH":
-            # For full refresh, we only need insert records
-            updates = self.get_df_batches(
-                f"SELECT * FROM {self.get_full_table_name(table_info)}"
-            )
-            all_updates = []
-            for df in updates:
-                all_updates.append(df)
-            updates_dict['records_to_insert'] = all_updates
-        return updates_dict
-
-    def _cleanup_records(self, table_info, existing_etl_ids):
-        if len(existing_etl_ids) == 0:
-            return
-        formatted_ids = [f"'{id}'" for id in existing_etl_ids]
-        formatted_where_clause = f"WHERE etl_id in ({', '.join(formatted_ids)})"
-        delete_transferred_records_query = f"DELETE FROM {self.get_stream_processing_table_name(table_info)} {formatted_where_clause}"
-        self.execute_query(delete_transferred_records_query)
-
+    def update_cdc_trackers(self, table_info, etl_id):
+        pass
 
     # UTILITY METHODS
     
-    def execute_query(self, query_text, return_results = False):
-        """Executes a query and optionally returns results."""
-        self.cursor.execute(query_text)
-        if return_results:
-            return self.cursor.fetchall()
+    # table information methods
 
-    def get_df_batches(self, query_text):
-        """
-        Executes a query and returns results as batches of DataFrames.
-        Uses configured batch size if provided, otherwise uses Snowflake's default batching.
-        """
-        try:
-            cursor = self.connection.cursor()
-            cursor.execute(query_text)
-            return cursor.fetch_pandas_batches()
-        except Exception as e:
-            print(f"Error executing query: {str(e)}")
-            raise
+    def get_schema(self, table_info):
+        # input: table_info dictionary containing keys database, schema, and table
+        # output: array of schema dictionaries as provided in format_schema_row 
+        if self.connection == None:
+            raise ConnectionError("You have not established a connection to the database")
+        elif self.cursor == None:
+            raise ConnectionError("You do not have a valid cursor")
+        
+        self.cursor.execute(f"DESC TABLE {self.get_full_table_name(table_info)}")
+        schema = []
+        for row in self.cursor.fetchall():
+            schema.append(self.format_schema_row(row))
+        return schema
 
+    def get_full_table_name(self, table_info):
+        database = table_info['database']
+        schema = table_info['schema']
+        table = table_info['table']
+        return f"{database}.{schema}.{table}"
+    
+    def replace_existing(self):
+        return self.config['replace_existing']
 
+    def get_change_tracking_schema_full_name(self):
+        return f"{self.config['change_tracking_database']}.{self.config['change_tracking_schema']}"
 
     def generate_source_sql(self, tables):
         role = self.config['role']
@@ -350,6 +342,22 @@ class SnowflakeWarehouse(AbstractWarehouse):
 
         all_grants = create_change_tracking_schema_statement + ['\n'] + general_grants + database_grants + schema_grants + table_grants
         return "\n".join(all_grants)
+
+    def get_primary_keys(self, table_info):
+        schema = self.get_schema(table_info)
+        return sorted([col['name'] for col in schema if col['primary_key']])
+
+    def get_supported_cdc_types(self):
+        return ("STANDARD_STREAM", "APPEND_ONLY_STREAM", "FULL_REFRESH")
+
+    def get_auth_type(self):
+        return self.config.get("authenticator", "snowflake")
+    
+    def execute_query(self, query_text, return_results = False):
+        """Executes a query and optionally returns results."""
+        self.cursor.execute(query_text)
+        if return_results:
+            return self.cursor.fetchall()
 
     def get_data_as_df_for_comparison(self, table_name, order_by_column = None):
         order_by_column = 1 if order_by_column == None else order_by_column
@@ -395,7 +403,7 @@ class SnowflakeWarehouse(AbstractWarehouse):
                 processed_df[col] = processed_df[col].astype(str)
         
         return processed_df
-    
+
     def set_timezone(self, tz):
         try:
             self.cursor.execute(f"ALTER SESSION SET TIMEZONE = '{tz}';")
@@ -415,51 +423,17 @@ class SnowflakeWarehouse(AbstractWarehouse):
                 problems.append(f"{self.get_full_table_name(table_info)} has a geometry or geography column.  Snowflake does not support these in standard streams.  Use append_only_streams or full_refresh for tables with these columns.")
         return problems
 
-
-    # warehouse information methods
-
-    def get_auth_type(self):
-        return self.config.get("authenticator", "snowflake")
-
-    def get_supported_cdc_types(self):
-        return ("STANDARD_STREAM", "APPEND_ONLY_STREAM", "FULL_REFRESH")
-    
-    def replace_existing(self):
-        return self.config['replace_existing']1
-    
-    # table information methods
-
-    def get_schema(self, table_info):
-        # input: table_info dictionary containing keys database, schema, and table
-        # output: array of schema dictionaries as provided in format_schema_row 
-        if self.connection == None:
-            raise ConnectionError("You have not established a connection to the database")
-        elif self.cursor == None:
-            raise ConnectionError("You do not have a valid cursor")
-        
-        self.cursor.execute(f"DESC TABLE {self.get_full_table_name(table_info)}")
-        schema = []
-        for row in self.cursor.fetchall():
-            schema.append(self.format_schema_row(row))
-        return schema
-
     def has_geometry_or_geography_column(self, schema):
         for col in schema:
             if col['type'] in ("GEOMETRY", "GEOGRAPHY"):
                 return True
         return False
     
-    def get_primary_keys(self, table_info):
-        schema = self.get_schema(table_info)
-        return sorted([col['name'] for col in schema if col['primary_key']])
 
+    
     # formatting methods
 
-    def get_full_table_name(self, table_info):
-        database = table_info['database']
-        schema = table_info['schema']
-        table = table_info['table']
-        return f"{database}.{schema}.{table}"
+
     
     def get_stream_name(self, table_info):
         """Returns the stream name for the given table."""
@@ -475,8 +449,7 @@ class SnowflakeWarehouse(AbstractWarehouse):
         table = table_info['table']
         return f"{self.get_change_tracking_schema_full_name()}.{database}${schema}${table}_processing"
     
-    def get_change_tracking_schema_full_name(self):
-        return f"{self.config['change_tracking_database']}.{self.config['change_tracking_schema']}"
+
     
     def format_schema_row(self, row):
         # input: row of the schema as provided in a cursor
@@ -488,14 +461,5 @@ class SnowflakeWarehouse(AbstractWarehouse):
             "primary_key": True if row[5] == "Y" else False
         }
     
-    def normalize_binary(value):
-        """Convert binary data to consistent bytes representation"""
-        if pd.isna(value):
-            return None
-        import base64
-        if isinstance(value, bytes):
-            return str(value)  # Gets the b'...' representation
-        if isinstance(value, str) and value.endswith('=='): # base64
-            return str(base64.b64decode(value))  # Convert to b'...' representation
-        return str(value)
-    # get information about warehouse methods
+    def _get_column_names(self, table_info):
+        return [column["name"] for column in self.get_schema(table_info)]

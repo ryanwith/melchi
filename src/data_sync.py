@@ -2,8 +2,7 @@
 
 from .warehouses.warehouse_factory import WarehouseFactory
 from .data_ingestion_manager import DataIngestionManager
-from .utils.table_config import get_tables_to_transfer, get_cdc_type
-from uuid import uuid4
+from .utils.table_config import get_tables_to_transfer
 
 
 def sync_data(config):
@@ -14,5 +13,4 @@ def sync_data(config):
     tables_to_transfer = get_tables_to_transfer(config)
 
     for table_info in tables_to_transfer:
-        print(f"Processing table: {table_info} as {cdc_type} CDC type")
-        data_ingestion_manager.sync_table(source_warehouse, target_warehouse, table_info)   
+        data_ingestion_manager.sync_table(table_info)   

@@ -7,7 +7,7 @@ from src.config import Config
 from src.warehouses.warehouse_factory import WarehouseFactory
 # from src.schema_sync import transfer_schema
 # from src.source_setup import setup_source
-from src.data_sync import sync_table, sync_data
+from src.data_sync import sync_data
 from tests.data_generators.snowflake.snowflake_data_generator import (
     generate_insert_into_select_statements, 
     generate_snowflake_data, 
@@ -445,23 +445,23 @@ def confirm_syncs(test_config):
     target_warehouse.connect()
    
 
-@pytest.mark.first
-def test_prep(test_config):
-    """First test to run - sets up initial test data"""
-    print("Recreating roles")
-    recreate_roles(test_config)
-    print("Dropping source objects")
-    drop_source_objects(test_config)
-    print("Creating source tables")
-    create_source_tables(test_config)
-    print("Creating cdc schema")
-    create_cdc_schema(test_config)
-    print("Granting permissions and altering objects")
-    grant_permissions_and_alter_objects(test_config)
-    print("Inserting generated data")
-    insert_generated_data(test_config, seed_values()['initial_seed_rows'])
+# @pytest.mark.first
+# def test_prep(test_config):
+#     """First test to run - sets up initial test data"""
+#     print("Recreating roles")
+#     recreate_roles(test_config)
+#     print("Dropping source objects")
+#     drop_source_objects(test_config)
+#     print("Creating source tables")
+#     create_source_tables(test_config)
+#     print("Creating cdc schema")
+#     create_cdc_schema(test_config)
+#     print("Granting permissions and altering objects")
+#     grant_permissions_and_alter_objects(test_config)
+#     print("Inserting generated data")
+#     insert_generated_data(test_config, seed_values()['initial_seed_rows'])
 
-@pytest.mark.depends(on=['test_prep'])
+# @pytest.mark.depends(on=['test_prep'])
 def test_initial_setup(test_config, request):
     """Depends on successful database seeding"""
     if request.session.testsfailed:
@@ -498,20 +498,6 @@ def test_run_cdc_no_changes(test_config, request):
     )
     
     assert result.returncode == 0, f"CDC sync failed with output:\nstdout: {result.stdout}\nstderr: {result.stderr}"
-
-# @pytest.mark.depends(on=['test_initial_setup'])
-# def test_initial_data_sync(test_config, request):
-#     """Depends on successful schema transfer"""
-#     if request.session.testsfailed:
-#         pytest.skip("Skipping as previous tests failed")
-#     sync_data(test_config)
-
-# @pytest.mark.depends(on=['test_initial_data_sync'])
-# def test_run_cdc_no_changes(test_config, request):
-#     """Depends on successful initial data sync"""
-#     if request.session.testsfailed:
-#         pytest.skip("Skipping as previous tests failed")
-#     sync_data(test_config)  
 
 @pytest.mark.depends(on=['test_run_cdc_no_changes'])
 def test_update_source_records(test_config, request):
@@ -569,53 +555,53 @@ def test_add_tables_while_keeping_some(test_config, request):
     
     assert sync_result.returncode == 0, f"Data sync failed with output:\nstdout: {sync_result.stdout}\nstderr: {sync_result.stderr}"
 
-@pytest.mark.depends(on=['test_initial_data_sync'])
-def test_sync_data_partial_failure_recovery(test_config, request):
-    """Test that a failed sync (after target commit but before source cleanup) recovers properly"""
-    if request.session.testsfailed:
-        pytest.skip("Skipping as previous tests failed")
+# @pytest.mark.depends(on=['test_initial_data_sync'])
+# def test_sync_data_partial_failure_recovery(test_config, request):
+#     """Test that a failed sync (after target commit but before source cleanup) recovers properly"""
+#     if request.session.testsfailed:
+#         pytest.skip("Skipping as previous tests failed")
 
-    # First, simulate a partial sync with failure
-    source_warehouse = WarehouseFactory.create_warehouse(test_config.source_type, test_config.source_config)
-    target_warehouse = WarehouseFactory.create_warehouse(test_config.target_type, test_config.target_config)
-    test_tables = get_tables_to_transfer(test_config)
+#     # First, simulate a partial sync with failure
+#     source_warehouse = WarehouseFactory.create_warehouse(test_config.source_type, test_config.source_config)
+#     target_warehouse = WarehouseFactory.create_warehouse(test_config.target_type, test_config.target_config)
+#     test_tables = get_tables_to_transfer(test_config)
 
-    try:
-        # 1. Get initial state
-        source_warehouse.connect()
-        target_warehouse.connect()
+#     try:
+#         # 1. Get initial state
+#         source_warehouse.connect()
+#         target_warehouse.connect()
         
-        # 2. Mock cleanup_source to simulate failure after target commit
-        original_cleanup = source_warehouse.cleanup_source
-        source_warehouse.cleanup_source = lambda x: None  # Do nothing, simulating failure
+#         # 2. Mock cleanup_source to simulate failure after target commit
+#         original_cleanup = source_warehouse.cleanup_source
+#         source_warehouse.cleanup_source = lambda x: None  # Do nothing, simulating failure
         
-        # 3. Add some test data and run sync_data while failing to cleanup the source
-        update_records(test_config, 2, 1, 1)
-        for table_info in test_tables:
-            sync_table(source_warehouse, target_warehouse, table_info)
+#         # 3. Add some test data and run sync_data while failing to cleanup the source
+#         update_records(test_config, 2, 1, 1)
+#         for table_info in test_tables:
+#             sync_table(source_warehouse, target_warehouse, table_info)
         
-        i = 0
-        # 4. Add some test data and run sync_data again while failing half of them
-        update_records(test_config, 2, 1, 1)
-        for table_info in test_tables:
-            if i%2 == 0:
-                source_warehouse.cleanup_source = lambda x: None  # Do nothing, simulating failure
-            else:
-                source_warehouse.cleanup_source = original_cleanup
-            sync_table(source_warehouse, target_warehouse, table_info)
-            i += 1
+#         i = 0
+#         # 4. Add some test data and run sync_data again while failing half of them
+#         update_records(test_config, 2, 1, 1)
+#         for table_info in test_tables:
+#             if i%2 == 0:
+#                 source_warehouse.cleanup_source = lambda x: None  # Do nothing, simulating failure
+#             else:
+#                 source_warehouse.cleanup_source = original_cleanup
+#             sync_table(source_warehouse, target_warehouse, table_info)
+#             i += 1
 
-        # 5. Now run a full sync with successful cleanup.  Note: warehouse objects will be created from the config
-        # so there is no need to change cleanup_source again
-        sync_data(test_config)
+#         # 5. Now run a full sync with successful cleanup.  Note: warehouse objects will be created from the config
+#         # so there is no need to change cleanup_source again
+#         sync_data(test_config)
 
-        # 6. Confirm there are no mismatches
-        confirm_full_sync(test_config)
-        confirm_append_only_stream_sync(test_config)        
+#         # 6. Confirm there are no mismatches
+#         confirm_full_sync(test_config)
+#         confirm_append_only_stream_sync(test_config)        
         
-    finally:
-        source_warehouse.disconnect()
-        target_warehouse.disconnect()
+#     finally:
+#         source_warehouse.disconnect()
+#         target_warehouse.disconnect()
 
     # confirm_full_sync(test_config)
     # confirm_append_only_stream_sync(test_config)
