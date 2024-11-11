@@ -20,6 +20,9 @@ class DuckDBWarehouse(AbstractWarehouse):
         self.config = config
         self.connection = None
 
+    ##########CONCRETE IMPLEMENTATIONS OF ABSTRACT METHODS##########
+
+
     # CONNECTION METHODS
 
     def connect(self):
@@ -57,17 +60,6 @@ class DuckDBWarehouse(AbstractWarehouse):
             raise NotImplementedError(f"DuckDB is not yet supported as a source")
         else:
             raise ValueError(f"Unknown warehouse role: {self.config['warehoues_role']}")
-
-    def _setup_target_environment(self):
-        """Creates metadata tables for CDC tracking and source schema information."""
-        self.connection.execute(f"CREATE SCHEMA IF NOT EXISTS {self.get_change_tracking_schema_full_name()};")
-        if self.replace_existing() == True:
-            beginning_of_query = f"CREATE OR REPLACE TABLE {self.get_change_tracking_schema_full_name()}"
-        else:
-            beginning_of_query = f"CREATE TABLE IF NOT EXISTS {self.get_change_tracking_schema_full_name()}"
-        self.connection.execute(f"""{beginning_of_query}.captured_tables (schema_name varchar, table_name varchar, created_at timestamp, updated_at timestamp, primary_keys varchar[], cdc_type varchar);""")
-        self.connection.execute(f"""{beginning_of_query}.source_columns (table_catalog varchar, table_schema varchar, table_name varchar, column_name varchar, data_type varchar, column_default varchar, is_nullable boolean, primary_key boolean);""")
-        self.connection.execute(f"""{beginning_of_query}.etl_events (schema_name varchar, table_name varchar, etl_id varchar, completed_at timestamp_ns default current_timestamp);""")
 
     def create_table(self, table_info, source_schema, target_schema):
         """
@@ -142,11 +134,6 @@ class DuckDBWarehouse(AbstractWarehouse):
     def prepare_stream_ingestion(self, table_info, etl_id):
         raise ValueError(f"Error ingesting records for {self.get_full_table_name(table_info)}.  Stream-based CDC is not supported for DuckDB as a source.")
 
-    def get_delete_batches_for_stream(self, table_info):
-        raise ValueError(f"Error ingesting records for {self.get_full_table_name(table_info)}.  Stream-based CDC is not supported for DuckDB as a source.")
-
-    def get_insert_batches_for_stream(self, table_info):
-        raise ValueError(f"Error ingesting records for {self.get_full_table_name(table_info)}.  Stream-based CDC is not supported for DuckDB as a source.")
 
     def truncate_table(self, table_info):
         truncate_query = f"TRUNCATE TABLE {self.get_full_table_name(table_info)};"
@@ -340,6 +327,28 @@ class DuckDBWarehouse(AbstractWarehouse):
     def set_timezone(self, tz):
         self.connection.execute(f"SET TIMEZONE = '{tz}';")
 
+
+    
+    ##########REGULAR METHODS##########
+
+
+    def _setup_target_environment(self):
+        """Creates metadata tables for CDC tracking and source schema information."""
+        self.connection.execute(f"CREATE SCHEMA IF NOT EXISTS {self.get_change_tracking_schema_full_name()};")
+        if self.replace_existing() == True:
+            beginning_of_query = f"CREATE OR REPLACE TABLE {self.get_change_tracking_schema_full_name()}"
+        else:
+            beginning_of_query = f"CREATE TABLE IF NOT EXISTS {self.get_change_tracking_schema_full_name()}"
+        self.connection.execute(f"""{beginning_of_query}.captured_tables (schema_name varchar, table_name varchar, created_at timestamp, updated_at timestamp, primary_keys varchar[], cdc_type varchar);""")
+        self.connection.execute(f"""{beginning_of_query}.source_columns (table_catalog varchar, table_schema varchar, table_name varchar, column_name varchar, data_type varchar, column_default varchar, is_nullable boolean, primary_key boolean);""")
+        self.connection.execute(f"""{beginning_of_query}.etl_events (schema_name varchar, table_name varchar, etl_id varchar, completed_at timestamp_ns default current_timestamp);""")
+
+    def get_delete_batches_for_stream(self, table_info):
+        raise ValueError(f"Error ingesting records for {self.get_full_table_name(table_info)}.  Stream-based CDC is not supported for DuckDB as a source.")
+
+    def get_insert_batches_for_stream(self, table_info):
+        raise ValueError(f"Error ingesting records for {self.get_full_table_name(table_info)}.  Stream-based CDC is not supported for DuckDB as a source.")
+
     def table_exists(self, table_info):
         table = table_info['table']
         schema = table_info['schema']
@@ -406,9 +415,6 @@ class DuckDBWarehouse(AbstractWarehouse):
             if column['type'] == "GEOMETRY":
                 return True
         return False
-    
-
-
     
     def normalize_wkt_spacing(self, wkt_str):
         if not isinstance(wkt_str, str):

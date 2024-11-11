@@ -445,23 +445,23 @@ def confirm_syncs(test_config):
     target_warehouse.connect()
    
 
-# @pytest.mark.first
-# def test_prep(test_config):
-#     """First test to run - sets up initial test data"""
-#     print("Recreating roles")
-#     recreate_roles(test_config)
-#     print("Dropping source objects")
-#     drop_source_objects(test_config)
-#     print("Creating source tables")
-#     create_source_tables(test_config)
-#     print("Creating cdc schema")
-#     create_cdc_schema(test_config)
-#     print("Granting permissions and altering objects")
-#     grant_permissions_and_alter_objects(test_config)
-#     print("Inserting generated data")
-#     insert_generated_data(test_config, seed_values()['initial_seed_rows'])
+@pytest.mark.first
+def test_prep(test_config):
+    """First test to run - sets up initial test data"""
+    print("Recreating roles")
+    recreate_roles(test_config)
+    print("Dropping source objects")
+    drop_source_objects(test_config)
+    print("Creating source tables")
+    create_source_tables(test_config)
+    print("Creating cdc schema")
+    create_cdc_schema(test_config)
+    print("Granting permissions and altering objects")
+    grant_permissions_and_alter_objects(test_config)
+    print("Inserting generated data")
+    insert_generated_data(test_config, seed_values()['initial_seed_rows'])
 
-# @pytest.mark.depends(on=['test_prep'])
+@pytest.mark.depends(on=['test_prep'])
 def test_initial_setup(test_config, request):
     """Depends on successful database seeding"""
     if request.session.testsfailed:
