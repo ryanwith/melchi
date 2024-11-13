@@ -1,7 +1,7 @@
 # type_mappings.py
 
 import warnings
-from ..utils.geometry import convert_geojson_to_wkt
+from ..utils.type_conversions import convert_geojson_to_wkt
 
 class TypeMapper:
     @staticmethod
@@ -52,17 +52,6 @@ class TypeMapper:
         }
         return mapping.get(duckdb_type.upper(), 'VARCHAR')
     
-    @staticmethod
-    def process_df(source_warehouse, target_warehouse, df):
-        try:
-            source_warehouse_type = source_warehouse.warehouse_type
-            target_warehouse_type = target_warehouse.warehouse_type
-            if source_warehouse_type.lower() == "snowflake" and target_warehouse_type.lower() == "duckdb":
-                df = process_df_snowflake_to_duckdb(df)
-                return df
-        except Exception as e:
-            print(f"Error processing df: {e}")
-            raise
 
     @staticmethod
     def process_df_snowflake_to_duckdb(df):
@@ -76,3 +65,26 @@ class TypeMapper:
             df_copy[col] = df_copy[col].apply(convert_geojson_to_wkt)
         
         return df_copy
+    
+    @staticmethod
+    def get_df_processing_function(source_warehouse, target_warehouse):
+        try:
+            source_warehouse_type = source_warehouse.warehouse_type
+            target_warehouse_type = target_warehouse.warehouse_type
+            if source_warehouse_type.lower() == "snowflake" and target_warehouse_type.lower() == "duckdb":
+                return TypeMapper.process_df_snowflake_to_duckdb
+        except Exception as e:
+            print(f"Error processing df: {e}")
+            raise
+
+    @staticmethod
+    def process_df(source_warehouse, target_warehouse, df):
+        try:
+            source_warehouse_type = source_warehouse.warehouse_type
+            target_warehouse_type = target_warehouse.warehouse_type
+            if source_warehouse_type.lower() == "snowflake" and target_warehouse_type.lower() == "duckdb":
+                df = TypeMapper.process_df_snowflake_to_duckdb(df)
+                return df
+        except Exception as e:
+            print(f"Error processing df: {e}")
+            raise

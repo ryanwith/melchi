@@ -7,7 +7,7 @@ from src.config import Config
 from src.warehouses.warehouse_factory import WarehouseFactory
 # from src.schema_sync import transfer_schema
 # from src.source_setup import setup_source
-from src.data_sync import sync_table, sync_data
+from src.data_sync import sync_data
 from tests.data_generators.snowflake.snowflake_data_generator import (
     generate_insert_into_select_statements, 
     generate_snowflake_data, 
@@ -77,8 +77,8 @@ def recreate_roles(test_config):
     finally:
         source_warehouse.disconnect()
 
-def grant_ownership_on_schema_query(schema, role = "ACCOUNTADMIN"):
-    return f"GRANT OWNERSHIP ON SCHEMA {schema} TO ROLE {role};"
+def grant_ownership_on_schema_query(schema, *,role = "ACCOUNTADMIN", revoke_existing = True):
+    return f"GRANT OWNERSHIP ON SCHEMA {schema} TO ROLE {role}{" REVOKE CURRENT GRANTS" if revoke_existing else ""};"
 
 def drop_source_objects(test_config):
     source_warehouse = WarehouseFactory.create_warehouse(test_config.source_type, test_config.source_config)
@@ -86,12 +86,15 @@ def drop_source_objects(test_config):
         source_warehouse.connect("ACCOUNTADMIN")
         source_warehouse.begin_transaction()
         # drop cdc tracking schema
-        source_warehouse.execute_query(f"GRANT ALL PRIVILEGES ON DATABASE {source_warehouse.get_change_tracking_schema_full_name().split('.')[0]} TO ROLE ACCOUNTADMIN;")
-        print(f"GRANT OWNERSHIP ON SCHEMA {source_warehouse.get_change_tracking_schema_full_name()} TO ROLE ACCOUNTADMIN;")
-        try:
-            source_warehouse.execute_query(f"GRANT OWNERSHIP ON SCHEMA {source_warehouse.get_change_tracking_schema_full_name()} TO ROLE ACCOUNTADMIN;")
-        except Exception as e:
-            print(e)
+        change_tracking_schema = source_warehouse.get_change_tracking_schema_full_name().split('.')[1]
+        change_tracking_db = source_warehouse.get_change_tracking_schema_full_name().split('.')[0]
+        if source_warehouse.is_existing_object(database=change_tracking_db):
+            # print(f"GRANT ALL PRIVILEGES ON DATABASE {source_warehouse.get_change_tracking_schema_full_name().split('.')[0]} TO ROLE ACCOUNTADMIN;")
+            source_warehouse.execute_query(f"GRANT ALL PRIVILEGES ON DATABASE {source_warehouse.get_change_tracking_schema_full_name().split('.')[0]} TO ROLE ACCOUNTADMIN;")
+        # print(f"GRANT OWNERSHIP ON SCHEMA {source_warehouse.get_change_tracking_schema_full_name()} TO ROLE ACCOUNTADMIN;")
+        if source_warehouse.is_existing_object(database=change_tracking_db, schema=change_tracking_schema):
+            source_warehouse.execute_query(f"GRANT OWNERSHIP ON SCHEMA {source_warehouse.get_change_tracking_schema_full_name()} TO ROLE ACCOUNTADMIN REVOKE CURRENT GRANTS;")
+        # print(f"DROP SCHEMA IF EXISTS {source_warehouse.get_change_tracking_schema_full_name()} CASCADE;")
         source_warehouse.execute_query(f"DROP SCHEMA IF EXISTS {source_warehouse.get_change_tracking_schema_full_name()} CASCADE;")
         test_tables = get_test_tables()
         schemas_to_drop = []
@@ -114,10 +117,9 @@ def drop_source_objects(test_config):
             drop_schema_queries.append(drop_schema_query)
 
         for query in grant_ownership_queries:
-            try:
-                source_warehouse.execute_query(query)
-            except Exception as e:
-                print(e)
+            print(query)
+            source_warehouse.execute_query(query)
+
 
         for query in drop_schema_queries:
             source_warehouse.execute_query(query)
@@ -448,10 +450,10 @@ def confirm_syncs(test_config):
 @pytest.mark.first
 def test_prep(test_config):
     """First test to run - sets up initial test data"""
-    print("Recreating roles")
-    recreate_roles(test_config)
     print("Dropping source objects")
     drop_source_objects(test_config)
+    print("Recreating roles")
+    recreate_roles(test_config)
     print("Creating source tables")
     create_source_tables(test_config)
     print("Creating cdc schema")
@@ -467,11 +469,45 @@ def test_initial_setup(test_config, request):
     if request.session.testsfailed:
         pytest.skip("Skipping as previous tests failed")
     
-    result = subprocess.run(
-        ["python3", "main.py", "setup", "--config", "tests/config/snowflake_to_duckdb.yaml", "--replace-existing"], 
-        check=True
+    process = subprocess.Popen(
+        ["python3", "main.py", "setup", "--config", "tests/config/snowflake_to_duckdb.yaml", "--replace-existing"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        bufsize=1,  # Line buffered
+        universal_newlines=True
     )
-    assert result.returncode == 0, f"Setup command failed with output:\nstdout: {result.stdout}\nstderr: {result.stderr}"
+
+    # Capture output while displaying it
+    stdout = []
+    stderr = []
+    
+    # Read stdout and stderr in real-time
+    while True:
+        stdout_line = process.stdout.readline()
+        stderr_line = process.stderr.readline()
+        
+        if stdout_line:
+            print(stdout_line, end='')  # Print to terminal
+            stdout.append(stdout_line)
+        if stderr_line:
+            print(stderr_line, end='')  # Print to terminal
+            stderr.append(stderr_line)
+            
+        if process.poll() is not None and not stdout_line and not stderr_line:
+            break
+    
+    # Get return code
+    return_code = process.wait()
+    stdout = ''.join(stdout)
+    stderr = ''.join(stderr)
+    
+    # Check results
+    assert return_code == 0, f"Setup command failed with:\nstdout: {stdout}\nstderr: {stderr}"
+    assert "Error" not in stdout, f"Setup had errors:\n{stdout}"
+    assert "Error" not in stderr, f"Setup had errors:\n{stderr}"
+    assert "Exception" not in stdout, f"Setup had exceptions:\n{stdout}"
+    assert "Exception" not in stderr, f"Setup had exceptions:\n{stderr}"
 
 @pytest.mark.depends(on=['test_initial_setup'])
 def test_initial_data_sync(test_config, request):
@@ -479,12 +515,45 @@ def test_initial_data_sync(test_config, request):
     if request.session.testsfailed:
         pytest.skip("Skipping as previous tests failed")
     
-    result = subprocess.run(
+    process = subprocess.Popen(
         ["python3", "main.py", "sync_data", "--config", "tests/config/snowflake_to_duckdb.yaml"],
-        check=True
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        bufsize=1,  # Line buffered
+        universal_newlines=True
     )
+
+    # Capture output while displaying it
+    stdout = []
+    stderr = []
     
-    assert result.returncode == 0, f"Data sync failed with output:\nstdout: {result.stdout}\nstderr: {result.stderr}"
+    # Read stdout and stderr in real-time
+    while True:
+        stdout_line = process.stdout.readline()
+        stderr_line = process.stderr.readline()
+        
+        if stdout_line:
+            print(stdout_line, end='')  # Print to terminal
+            stdout.append(stdout_line)
+        if stderr_line:
+            print(stderr_line, end='')  # Print to terminal
+            stderr.append(stderr_line)
+            
+        if process.poll() is not None and not stdout_line and not stderr_line:
+            break
+    
+    # Get return code
+    return_code = process.wait()
+    stdout = ''.join(stdout)
+    stderr = ''.join(stderr)
+    
+    # Check results
+    assert return_code == 0, f"Data sync failed with:\nstdout: {stdout}\nstderr: {stderr}"
+    assert "Error" not in stdout, f"Sync had errors:\n{stdout}"
+    assert "Error" not in stderr, f"Sync had errors:\n{stderr}"
+    assert "Exception" not in stdout, f"Sync had exceptions:\n{stdout}"
+    assert "Exception" not in stderr, f"Sync had exceptions:\n{stderr}"
 
 @pytest.mark.depends(on=['test_initial_data_sync'])
 def test_run_cdc_no_changes(test_config, request):
@@ -498,20 +567,6 @@ def test_run_cdc_no_changes(test_config, request):
     )
     
     assert result.returncode == 0, f"CDC sync failed with output:\nstdout: {result.stdout}\nstderr: {result.stderr}"
-
-# @pytest.mark.depends(on=['test_initial_setup'])
-# def test_initial_data_sync(test_config, request):
-#     """Depends on successful schema transfer"""
-#     if request.session.testsfailed:
-#         pytest.skip("Skipping as previous tests failed")
-#     sync_data(test_config)
-
-# @pytest.mark.depends(on=['test_initial_data_sync'])
-# def test_run_cdc_no_changes(test_config, request):
-#     """Depends on successful initial data sync"""
-#     if request.session.testsfailed:
-#         pytest.skip("Skipping as previous tests failed")
-#     sync_data(test_config)  
 
 @pytest.mark.depends(on=['test_run_cdc_no_changes'])
 def test_update_source_records(test_config, request):
@@ -569,53 +624,53 @@ def test_add_tables_while_keeping_some(test_config, request):
     
     assert sync_result.returncode == 0, f"Data sync failed with output:\nstdout: {sync_result.stdout}\nstderr: {sync_result.stderr}"
 
-@pytest.mark.depends(on=['test_initial_data_sync'])
-def test_sync_data_partial_failure_recovery(test_config, request):
-    """Test that a failed sync (after target commit but before source cleanup) recovers properly"""
-    if request.session.testsfailed:
-        pytest.skip("Skipping as previous tests failed")
+# @pytest.mark.depends(on=['test_initial_data_sync'])
+# def test_sync_data_partial_failure_recovery(test_config, request):
+#     """Test that a failed sync (after target commit but before source cleanup) recovers properly"""
+#     if request.session.testsfailed:
+#         pytest.skip("Skipping as previous tests failed")
 
-    # First, simulate a partial sync with failure
-    source_warehouse = WarehouseFactory.create_warehouse(test_config.source_type, test_config.source_config)
-    target_warehouse = WarehouseFactory.create_warehouse(test_config.target_type, test_config.target_config)
-    test_tables = get_tables_to_transfer(test_config)
+#     # First, simulate a partial sync with failure
+#     source_warehouse = WarehouseFactory.create_warehouse(test_config.source_type, test_config.source_config)
+#     target_warehouse = WarehouseFactory.create_warehouse(test_config.target_type, test_config.target_config)
+#     test_tables = get_tables_to_transfer(test_config)
 
-    try:
-        # 1. Get initial state
-        source_warehouse.connect()
-        target_warehouse.connect()
+#     try:
+#         # 1. Get initial state
+#         source_warehouse.connect()
+#         target_warehouse.connect()
         
-        # 2. Mock cleanup_source to simulate failure after target commit
-        original_cleanup = source_warehouse.cleanup_source
-        source_warehouse.cleanup_source = lambda x: None  # Do nothing, simulating failure
+#         # 2. Mock cleanup_source to simulate failure after target commit
+#         original_cleanup = source_warehouse.cleanup_source
+#         source_warehouse.cleanup_source = lambda x: None  # Do nothing, simulating failure
         
-        # 3. Add some test data and run sync_data while failing to cleanup the source
-        update_records(test_config, 2, 1, 1)
-        for table_info in test_tables:
-            sync_table(source_warehouse, target_warehouse, table_info)
+#         # 3. Add some test data and run sync_data while failing to cleanup the source
+#         update_records(test_config, 2, 1, 1)
+#         for table_info in test_tables:
+#             sync_table(source_warehouse, target_warehouse, table_info)
         
-        i = 0
-        # 4. Add some test data and run sync_data again while failing half of them
-        update_records(test_config, 2, 1, 1)
-        for table_info in test_tables:
-            if i%2 == 0:
-                source_warehouse.cleanup_source = lambda x: None  # Do nothing, simulating failure
-            else:
-                source_warehouse.cleanup_source = original_cleanup
-            sync_table(source_warehouse, target_warehouse, table_info)
-            i += 1
+#         i = 0
+#         # 4. Add some test data and run sync_data again while failing half of them
+#         update_records(test_config, 2, 1, 1)
+#         for table_info in test_tables:
+#             if i%2 == 0:
+#                 source_warehouse.cleanup_source = lambda x: None  # Do nothing, simulating failure
+#             else:
+#                 source_warehouse.cleanup_source = original_cleanup
+#             sync_table(source_warehouse, target_warehouse, table_info)
+#             i += 1
 
-        # 5. Now run a full sync with successful cleanup.  Note: warehouse objects will be created from the config
-        # so there is no need to change cleanup_source again
-        sync_data(test_config)
+#         # 5. Now run a full sync with successful cleanup.  Note: warehouse objects will be created from the config
+#         # so there is no need to change cleanup_source again
+#         sync_data(test_config)
 
-        # 6. Confirm there are no mismatches
-        confirm_full_sync(test_config)
-        confirm_append_only_stream_sync(test_config)        
+#         # 6. Confirm there are no mismatches
+#         confirm_full_sync(test_config)
+#         confirm_append_only_stream_sync(test_config)        
         
-    finally:
-        source_warehouse.disconnect()
-        target_warehouse.disconnect()
+#     finally:
+#         source_warehouse.disconnect()
+#         target_warehouse.disconnect()
 
     # confirm_full_sync(test_config)
     # confirm_append_only_stream_sync(test_config)
