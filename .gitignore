@@ -42,6 +42,7 @@ tests/output
 /temp
 
 /output/target_database.duckdb
+/output/target_database.duckdb.wal
 /output/source_setup.sql
 
 /utils
