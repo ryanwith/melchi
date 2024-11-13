@@ -6,6 +6,7 @@ from src.schema_sync import transfer_schema
 from src.data_sync import sync_data
 from src.source_setup import setup_source
 from src.source_sql_generator import generate_source_sql
+from pprint import pp
 
 def main():
     parser = argparse.ArgumentParser(description="Data Warehouse Transfer Tool")

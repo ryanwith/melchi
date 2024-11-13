@@ -461,24 +461,51 @@ def test_prep(test_config):
     print("Inserting generated data")
     insert_generated_data(test_config, seed_values()['initial_seed_rows'])
 
+@pytest.mark.depends(on=['test_prep'])
 def test_initial_setup(test_config, request):
     """Depends on successful database seeding"""
     if request.session.testsfailed:
         pytest.skip("Skipping as previous tests failed")
     
-    result = subprocess.run(
+    process = subprocess.Popen(
         ["python3", "main.py", "setup", "--config", "tests/config/snowflake_to_duckdb.yaml", "--replace-existing"],
-        capture_output=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
         text=True,
-        check=False  # Don't raise exception immediately on non-zero return code
+        bufsize=1,  # Line buffered
+        universal_newlines=True
     )
+
+    # Capture output while displaying it
+    stdout = []
+    stderr = []
     
-    # Check both return code and look for error messages in output
-    assert result.returncode == 0, f"Setup command failed with:\nstdout: {result.stdout}\nstderr: {result.stderr}"
-    assert "Error" not in result.stdout, f"Setup had errors:\n{result.stdout}"
-    assert "Error" not in result.stderr, f"Setup had errors:\n{result.stderr}"
-    assert "Exception" not in result.stdout, f"Setup had exceptions:\n{result.stdout}"
-    assert "Exception" not in result.stderr, f"Setup had exceptions:\n{result.stderr}"
+    # Read stdout and stderr in real-time
+    while True:
+        stdout_line = process.stdout.readline()
+        stderr_line = process.stderr.readline()
+        
+        if stdout_line:
+            print(stdout_line, end='')  # Print to terminal
+            stdout.append(stdout_line)
+        if stderr_line:
+            print(stderr_line, end='')  # Print to terminal
+            stderr.append(stderr_line)
+            
+        if process.poll() is not None and not stdout_line and not stderr_line:
+            break
+    
+    # Get return code
+    return_code = process.wait()
+    stdout = ''.join(stdout)
+    stderr = ''.join(stderr)
+    
+    # Check results
+    assert return_code == 0, f"Setup command failed with:\nstdout: {stdout}\nstderr: {stderr}"
+    assert "Error" not in stdout, f"Setup had errors:\n{stdout}"
+    assert "Error" not in stderr, f"Setup had errors:\n{stderr}"
+    assert "Exception" not in stdout, f"Setup had exceptions:\n{stdout}"
+    assert "Exception" not in stderr, f"Setup had exceptions:\n{stderr}"
 
 @pytest.mark.depends(on=['test_initial_setup'])
 def test_initial_data_sync(test_config, request):
@@ -486,19 +513,45 @@ def test_initial_data_sync(test_config, request):
     if request.session.testsfailed:
         pytest.skip("Skipping as previous tests failed")
     
-    result = subprocess.run(
+    process = subprocess.Popen(
         ["python3", "main.py", "sync_data", "--config", "tests/config/snowflake_to_duckdb.yaml"],
-        capture_output=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
         text=True,
-        check=False  # Don't raise exception immediately on non-zero return code
+        bufsize=1,  # Line buffered
+        universal_newlines=True
     )
+
+    # Capture output while displaying it
+    stdout = []
+    stderr = []
     
-    # Check both return code and look for error messages in output
-    assert result.returncode == 0, f"Data sync failed with:\nstdout: {result.stdout}\nstderr: {result.stderr}"
-    assert "Error" not in result.stdout, f"Sync had errors:\n{result.stdout}"
-    assert "Error" not in result.stderr, f"Sync had errors:\n{result.stderr}"
-    assert "Exception" not in result.stdout, f"Sync had exceptions:\n{result.stdout}"
-    assert "Exception" not in result.stderr, f"Sync had exceptions:\n{result.stderr}"
+    # Read stdout and stderr in real-time
+    while True:
+        stdout_line = process.stdout.readline()
+        stderr_line = process.stderr.readline()
+        
+        if stdout_line:
+            print(stdout_line, end='')  # Print to terminal
+            stdout.append(stdout_line)
+        if stderr_line:
+            print(stderr_line, end='')  # Print to terminal
+            stderr.append(stderr_line)
+            
+        if process.poll() is not None and not stdout_line and not stderr_line:
+            break
+    
+    # Get return code
+    return_code = process.wait()
+    stdout = ''.join(stdout)
+    stderr = ''.join(stderr)
+    
+    # Check results
+    assert return_code == 0, f"Data sync failed with:\nstdout: {stdout}\nstderr: {stderr}"
+    assert "Error" not in stdout, f"Sync had errors:\n{stdout}"
+    assert "Error" not in stderr, f"Sync had errors:\n{stderr}"
+    assert "Exception" not in stdout, f"Sync had exceptions:\n{stdout}"
+    assert "Exception" not in stderr, f"Sync had exceptions:\n{stderr}"
 
 @pytest.mark.depends(on=['test_initial_data_sync'])
 def test_run_cdc_no_changes(test_config, request):

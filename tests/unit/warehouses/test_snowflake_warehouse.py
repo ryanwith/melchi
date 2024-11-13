@@ -2,6 +2,7 @@ import pytest
 from unittest.mock import Mock, patch, call
 from src.warehouses.snowflake_warehouse import SnowflakeWarehouse
 from tests.utils.helpers import normalize_sql
+from datetime import datetime
 
 @pytest.fixture
 def config():
@@ -1372,3 +1373,244 @@ class TestErrorHandling:
             assert warehouse.connection is None
             assert warehouse.cursor is None
 
+class TestTableOperations:
+    def test_table_creation_with_different_schemas(self, warehouse):
+        """Test creating a table with different schema configurations"""
+        with patch('snowflake.connector.connect') as mock_connect:
+            mock_connection = Mock()
+            mock_exists_result = Mock()
+            mock_exists_result.fetchone.return_value = None
+            
+            def mock_execute_return(sql):
+                if "information_schema.tables" in sql:
+                    return mock_exists_result
+                return Mock()
+
+            mock_connection.execute.side_effect = mock_execute_return
+            mock_connect.return_value = mock_connection
+            warehouse.config["replace_existing"] = True
+            warehouse.connect()
+
+            test_cases = [
+                # Basic table with single PK
+                {
+                    "table_info": {
+                        "database": "test_db",
+                        "schema": "test_schema",
+                        "table": "single_pk_table",
+                        "cdc_type": "FULL_REFRESH"
+                    },
+                    "schema": [
+                        {
+                            "name": "id",
+                            "type": "INTEGER",
+                            "nullable": False,
+                            "default_value": None,
+                            "primary_key": True
+                        },
+                        {
+                            "name": "name",
+                            "type": "VARCHAR",
+                            "nullable": True,
+                            "default_value": None,
+                            "primary_key": False
+                        }
+                    ]
+                },
+                # Table with composite PK
+                {
+                    "table_info": {
+                        "database": "test_db",
+                        "schema": "test_schema",
+                        "table": "composite_pk_table",
+                        "cdc_type": "FULL_REFRESH"
+                    },
+                    "schema": [
+                        {
+                            "name": "id1",
+                            "type": "INTEGER",
+                            "nullable": False,
+                            "default_value": None,
+                            "primary_key": True
+                        },
+                        {
+                            "name": "id2",
+                            "type": "INTEGER",
+                            "nullable": False,
+                            "default_value": None,
+                            "primary_key": True
+                        }
+                    ]
+                },
+                # Table with all nullable columns
+                {
+                    "table_info": {
+                        "database": "test_db",
+                        "schema": "test_schema",
+                        "table": "nullable_table",
+                        "cdc_type": "FULL_REFRESH"
+                    },
+                    "schema": [
+                        {
+                            "name": "col1",
+                            "type": "VARCHAR",
+                            "nullable": True,
+                            "default_value": None,
+                            "primary_key": False
+                        },
+                        {
+                            "name": "col2",
+                            "type": "INTEGER",
+                            "nullable": True,
+                            "default_value": None,
+                            "primary_key": False
+                        }
+                    ]
+                }
+            ]
+
+            for case in test_cases:
+                with patch('datetime.datetime') as mock_datetime:
+                    mock_datetime.now.return_value = datetime(2024, 1, 1, 12, 0, 0)
+                    mock_connection.execute.reset_mock()  # Reset the mock between cases
+                    
+                    warehouse.create_table(case["table_info"], case["schema"], case["schema"])
+
+                    schema_def = ", ".join([
+                        f"{col['name']} {col['type']}{' NOT NULL' if not col['nullable'] else ''}"
+                        for col in case["schema"]
+                    ])
+                    primary_keys = [col["name"] for col in case["schema"] if col["primary_key"]]
+                    pk_list = f"[{', '.join([repr(pk) for pk in primary_keys])}]"
+
+                    table_name = f"{case['table_info']['schema']}.{case['table_info']['table']}"
+                    
+                    expected_calls = [
+                        f"CREATE SCHEMA IF NOT EXISTS {case['table_info']['schema']};",
+                        f"CREATE OR REPLACE TABLE {table_name} ({schema_def});",
+                        f"DELETE FROM cdc_schema.captured_tables WHERE schema_name = '{case['table_info']['schema']}' and table_name = '{case['table_info']['table']}';",
+                        f"DELETE FROM cdc_schema.source_columns WHERE table_schema = '{case['table_info']['schema']}' and table_name = '{case['table_info']['table']}';",
+                        f"INSERT INTO cdc_schema.captured_tables VALUES ('{case['table_info']['schema']}', '{case['table_info']['table']}', '2024-01-01 12:00:00', '2024-01-01 12:00:00', {pk_list}, 'FULL_REFRESH');",
+                        f"INSERT INTO cdc_schema.source_columns VALUES " + 
+                        ", ".join([f"('test_db', '{case['table_info']['schema']}', '{case['table_info']['table']}', '{col['name']}', '{col['type']}', NULL, {'TRUE' if col['nullable'] else 'FALSE'}, {'TRUE' if col['primary_key'] else 'FALSE'})" 
+                                for col in case["schema"]]) + ";"
+                    ]
+
+                    actual_calls = [call for call in mock_connection.execute.call_args_list 
+                                    if not any(x in call[0][0] for x in ["USE ROLE", "USE WAREHOUSE"])]
+                    
+                    print(f"\nTesting case: {case['table_info']['table']}")
+                    for expected, actual in zip(expected_calls, actual_calls):
+                        assert normalize_sql(expected) == normalize_sql(actual[0][0])
+
+    def test_table_truncation(self, warehouse):
+        """Test table truncation operation"""
+        with patch('snowflake.connector.connect') as mock_connect:
+            mock_connection = Mock()
+            mock_cursor = Mock()
+            mock_connection.cursor.return_value = mock_cursor
+            mock_connect.return_value = mock_connection
+            
+            warehouse.connect()
+            table_info = {
+                "database": "test_database",
+                "schema": "test_schema",
+                "table": "test_table"
+            }
+            
+            warehouse.truncate_table(table_info)
+            
+            expected_sql = "TRUNCATE TABLE test_database.test_schema.test_table;"
+            actual_sql = mock_cursor.execute.call_args_list[2][0][0]  # Skip first two setup calls
+            assert normalize_sql(expected_sql) == normalize_sql(actual_sql)
+
+    def test_special_characters_in_table_names(self, warehouse):
+        """Test handling of special characters in table and schema names"""
+        with patch('snowflake.connector.connect') as mock_connect:
+            mock_connection = Mock()
+            mock_exists_result = Mock()
+            mock_exists_result.fetchone.return_value = None
+            
+            def mock_execute_return(sql):
+                if "information_schema.tables" in sql:
+                    return mock_exists_result
+                return Mock()
+
+            mock_connection.execute.side_effect = mock_execute_return
+            mock_connect.return_value = mock_connection
+            
+            warehouse.connect()
+            special_char_cases = [
+                {
+                    "schema": "test-schema",
+                    "table": "test-table"
+                },
+                {
+                    "schema": "test_schema",
+                    "table": "test$table"
+                },
+                {
+                    "schema": "test.schema",
+                    "table": "test.table"
+                }
+            ]
+
+            for table_info in special_char_cases:
+                schema = [{
+                    "name": "id",
+                    "type": "INTEGER",
+                    "nullable": False,
+                    "default_value": None,
+                    "primary_key": True
+                }]
+                
+                table_info["database"] = "test_db"
+                table_info["cdc_type"] = "FULL_REFRESH"
+
+                # Reset the mock connection's call list for each iteration
+                mock_connection.execute.reset_mock()
+
+                with patch('datetime.datetime') as mock_datetime:
+                    mock_datetime.now.return_value = datetime(2024, 1, 1, 12, 0, 0)
+                    warehouse.create_table(table_info, schema, schema)
+                    
+                    expected_calls = [
+                        f"CREATE SCHEMA IF NOT EXISTS {table_info['schema']};",
+                        f"CREATE OR REPLACE TABLE {table_info['schema']}.{table_info['table']} (id INTEGER NOT NULL);",
+                        f"DELETE FROM cdc_schema.captured_tables WHERE schema_name = '{table_info['schema']}' and table_name = '{table_info['table']}';",
+                        f"DELETE FROM cdc_schema.source_columns WHERE table_schema = '{table_info['schema']}' and table_name = '{table_info['table']}';",
+                        f"INSERT INTO cdc_schema.captured_tables VALUES ('{table_info['schema']}', '{table_info['table']}', '2024-01-01 12:00:00', '2024-01-01 12:00:00', ['id'], 'FULL_REFRESH');",
+                        f"INSERT INTO cdc_schema.source_columns VALUES ('test_db', '{table_info['schema']}', '{table_info['table']}', 'id', 'INTEGER', NULL, FALSE, TRUE);"
+                    ]
+                    
+                    actual_calls = [call for call in mock_connection.execute.call_args_list 
+                                    if not any(x in call[0][0] for x in ["USE ROLE", "USE WAREHOUSE"])]
+                    
+                    print(f"\nTesting case: schema={table_info['schema']}, table={table_info['table']}")
+                    for expected, actual in zip(expected_calls, actual_calls):
+                        assert normalize_sql(expected) == normalize_sql(actual[0][0])
+
+    def test_schema_and_table_name_formatting(self, warehouse):
+        """Test proper formatting of schema and table names"""
+        test_cases = [
+            {
+                "input": {
+                    "database": "TestDB",
+                    "schema": "TestSchema",
+                    "table": "TestTable"
+                },
+                "expected": "TestDB.TestSchema.TestTable"
+            },
+            {
+                "input": {
+                    "database": "test_db",
+                    "schema": "test_schema",
+                    "table": "test_table"
+                },
+                "expected": "test_db.test_schema.test_table"
+            }
+        ]
+        
+        for case in test_cases:
+            result = warehouse.get_full_table_name(case["input"])
+            assert result == case["expected"]
