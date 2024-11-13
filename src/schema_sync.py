@@ -10,7 +10,6 @@ def transfer_schema(config, tables=None):
     try:
         source_warehouse.connect()
         target_warehouse.connect()
-        print(1111111)
         if tables is None:
             tables = get_tables_to_transfer(config)
         try:

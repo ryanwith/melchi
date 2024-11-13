@@ -78,7 +78,7 @@ def recreate_roles(test_config):
         source_warehouse.disconnect()
 
 def grant_ownership_on_schema_query(schema, *,role = "ACCOUNTADMIN", revoke_existing = True):
-    return f"GRANT OWNERSHIP ON SCHEMA {schema} TO ROLE {role}{" REVOKE CURRENT GRANTS" if revoke_existing else ""};"
+    return f"GRANT OWNERSHIP ON SCHEMA {schema} TO ROLE {role}{' REVOKE CURRENT GRANTS' if revoke_existing else ''};"
 
 def drop_source_objects(test_config):
     source_warehouse = WarehouseFactory.create_warehouse(test_config.source_type, test_config.source_config)
