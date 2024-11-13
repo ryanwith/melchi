@@ -77,8 +77,8 @@ def recreate_roles(test_config):
     finally:
         source_warehouse.disconnect()
 
-def grant_ownership_on_schema_query(schema, role = "ACCOUNTADMIN"):
-    return f"GRANT OWNERSHIP ON SCHEMA {schema} TO ROLE {role};"
+def grant_ownership_on_schema_query(schema, *,role = "ACCOUNTADMIN", revoke_existing = True):
+    return f"GRANT OWNERSHIP ON SCHEMA {schema} TO ROLE {role}{" REVOKE CURRENT GRANTS" if revoke_existing else ""};"
 
 def drop_source_objects(test_config):
     source_warehouse = WarehouseFactory.create_warehouse(test_config.source_type, test_config.source_config)
@@ -86,11 +86,15 @@ def drop_source_objects(test_config):
         source_warehouse.connect("ACCOUNTADMIN")
         source_warehouse.begin_transaction()
         # drop cdc tracking schema
-        print(f"GRANT ALL PRIVILEGES ON DATABASE {source_warehouse.get_change_tracking_schema_full_name().split('.')[0]} TO ROLE ACCOUNTADMIN;")
-        source_warehouse.execute_query(f"GRANT ALL PRIVILEGES ON DATABASE IF EXISTS {source_warehouse.get_change_tracking_schema_full_name().split('.')[0]} TO ROLE ACCOUNTADMIN;")
-        print(f"GRANT OWNERSHIP ON SCHEMA {source_warehouse.get_change_tracking_schema_full_name()} TO ROLE ACCOUNTADMIN;")
-        source_warehouse.execute_query(f"GRANT OWNERSHIP ON SCHEMA IF EXISTS {source_warehouse.get_change_tracking_schema_full_name()} TO ROLE ACCOUNTADMIN;")
-        print(f"DROP SCHEMA IF EXISTS {source_warehouse.get_change_tracking_schema_full_name()} CASCADE;")
+        change_tracking_schema = source_warehouse.get_change_tracking_schema_full_name().split('.')[1]
+        change_tracking_db = source_warehouse.get_change_tracking_schema_full_name().split('.')[0]
+        if source_warehouse.is_existing_object(database=change_tracking_db):
+            # print(f"GRANT ALL PRIVILEGES ON DATABASE {source_warehouse.get_change_tracking_schema_full_name().split('.')[0]} TO ROLE ACCOUNTADMIN;")
+            source_warehouse.execute_query(f"GRANT ALL PRIVILEGES ON DATABASE {source_warehouse.get_change_tracking_schema_full_name().split('.')[0]} TO ROLE ACCOUNTADMIN;")
+        # print(f"GRANT OWNERSHIP ON SCHEMA {source_warehouse.get_change_tracking_schema_full_name()} TO ROLE ACCOUNTADMIN;")
+        if source_warehouse.is_existing_object(database=change_tracking_db, schema=change_tracking_schema):
+            source_warehouse.execute_query(f"GRANT OWNERSHIP ON SCHEMA {source_warehouse.get_change_tracking_schema_full_name()} TO ROLE ACCOUNTADMIN REVOKE CURRENT GRANTS;")
+        # print(f"DROP SCHEMA IF EXISTS {source_warehouse.get_change_tracking_schema_full_name()} CASCADE;")
         source_warehouse.execute_query(f"DROP SCHEMA IF EXISTS {source_warehouse.get_change_tracking_schema_full_name()} CASCADE;")
         test_tables = get_test_tables()
         schemas_to_drop = []
@@ -113,6 +117,7 @@ def drop_source_objects(test_config):
             drop_schema_queries.append(drop_schema_query)
 
         for query in grant_ownership_queries:
+            print(query)
             source_warehouse.execute_query(query)
 
 

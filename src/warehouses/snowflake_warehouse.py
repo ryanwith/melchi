@@ -458,3 +458,21 @@ class SnowflakeWarehouse(AbstractWarehouse):
 
     # def sync_table(self, table_info, updates_dict):
     #     raise NotImplementedError("Snowflake is not yet supported as a target")
+
+    def is_existing_object(self, *, database = None, schema = None, table = None):
+        if database is None and schema is None and table is None:
+            raise ValueError("Error.  You need to provide a database, schema, or table name to check if an object exists.")
+        
+        filter_conditions = []
+        if database is not None:
+            filter_conditions.append(f"table_catalog ilike \'{database}\'")
+        if schema is not None:
+            filter_conditions.append(f"table_schema ilike \'{schema}\'")
+        if table is not None:
+            filter_conditions.append(f"table_name ilike \'{table}\'")
+        where_clause = f"WHERE {' AND '.join(filter_conditions)}"
+        query = f"""
+            SELECT COUNT(*) FROM {database}.INFORMATION_SCHEMA.TABLES {where_clause}
+        """
+        
+        return True if self.execute_query(query, True)[0][0] > 0 else False
