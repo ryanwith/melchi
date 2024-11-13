@@ -1614,3 +1614,395 @@ class TestTableOperations:
         for case in test_cases:
             result = warehouse.get_full_table_name(case["input"])
             assert result == case["expected"]
+
+
+class TestDataTypeHandling:
+    def test_all_supported_types(self, warehouse):
+        """Test handling of all supported data types"""
+        with patch('snowflake.connector.connect') as mock_connect:
+            mock_connection = Mock()
+            mock_cursor = Mock()
+            mock_connection.cursor.return_value = mock_cursor
+            mock_connect.return_value = mock_connection
+
+            # Mock cursor.fetchall to return test data for all types
+            test_data = [
+                ("id", "NUMBER(38,0)", "", "N", None, "Y"),
+                ("decimal_col", "DECIMAL(10,2)", "", "Y", None, "N"),
+                ("float_col", "FLOAT", "", "Y", None, "N"),
+                ("varchar_col", "VARCHAR(255)", "", "Y", None, "N"),
+                ("binary_col", "BINARY", "", "Y", None, "N"),
+                ("boolean_col", "BOOLEAN", "", "Y", None, "N"),
+                ("date_col", "DATE", "", "Y", None, "N"),
+                ("time_col", "TIME", "", "Y", None, "N"),
+                ("timestamp_col", "TIMESTAMP", "", "Y", None, "N"),
+                ("variant_col", "VARIANT", "", "Y", None, "N"),
+                ("array_col", "ARRAY", "", "Y", None, "N"),
+                ("object_col", "OBJECT", "", "Y", None, "N"),
+                ("geography_col", "GEOGRAPHY", "", "Y", None, "N")
+            ]
+            mock_cursor.fetchall.return_value = test_data
+
+            warehouse.connect()
+            table_info = {
+                "database": "test_db",
+                "schema": "test_schema",
+                "table": "test_table"
+            }
+
+            schema = warehouse.get_schema(table_info)
+
+            assert len(schema) == len(test_data)
+            for actual, expected in zip(schema, test_data):
+                assert actual["name"] == expected[0]
+                assert actual["type"] == expected[1]
+                assert actual["nullable"] == (expected[3] == "Y")
+                assert actual["default_value"] == expected[4]
+                assert actual["primary_key"] == (expected[5] == "Y")
+
+    def test_spatial_data_handling(self, warehouse):
+        """Test handling of spatial data types (GEOGRAPHY and GEOMETRY)"""
+        with patch('snowflake.connector.connect') as mock_connect:
+            mock_connection = Mock()
+            mock_cursor = Mock()
+            mock_connection.cursor.return_value = mock_cursor
+            mock_connect.return_value = mock_connection
+
+            # Mock the pandas DataFrame for spatial data
+            import pandas as pd
+            spatial_df = pd.DataFrame({
+                'GEOGRAPHY_COL': ['{"type":"Point","coordinates":[1.0,2.0]}', 
+                                '{"type":"Point","coordinates":[3.0,4.0]}']
+            })
+            
+            # Mock cursor to return the DataFrame in batches
+            mock_cursor.fetch_pandas_batches.return_value = [spatial_df]
+
+            warehouse.connect()
+            query = "SELECT ST_ASGEOJSON(geography_col) FROM test_table;"
+            
+            result = list(warehouse.get_df_batches(query))
+            assert len(result) == 1
+            assert isinstance(result[0], pd.DataFrame)
+            assert 'GEOGRAPHY_COL' in result[0].columns
+            assert len(result[0]) == 2
+            assert '"type":"Point"' in result[0]['GEOGRAPHY_COL'][0]
+
+    def test_timestamp_handling(self, warehouse):
+        """Test handling of various timestamp and datetime types"""
+        with patch('snowflake.connector.connect') as mock_connect:
+            mock_connection = Mock()
+            mock_cursor = Mock()
+            mock_connection.cursor.return_value = mock_cursor
+            mock_connect.return_value = mock_connection
+
+            test_data = [
+                ("timestamp_col", "TIMESTAMP_NTZ(9)", "", "Y", None, "N"),
+                ("timestamp_ltz", "TIMESTAMP_LTZ(9)", "", "Y", None, "N"),
+                ("timestamp_tz", "TIMESTAMP_TZ(9)", "", "Y", None, "N"),
+                ("date_col", "DATE", "", "Y", None, "N"),
+                ("time_col", "TIME(9)", "", "Y", None, "N")
+            ]
+            mock_cursor.fetchall.return_value = test_data
+
+            warehouse.connect()
+            table_info = {
+                "database": "test_db",
+                "schema": "test_schema",
+                "table": "test_table"
+            }
+
+            schema = warehouse.get_schema(table_info)
+            assert len(schema) == len(test_data)
+
+            # Verify timestamp type mappings
+            type_mappings = {
+                "TIMESTAMP_NTZ(9)": schema[0]["type"],
+                "TIMESTAMP_LTZ(9)": schema[1]["type"],
+                "TIMESTAMP_TZ(9)": schema[2]["type"],
+                "DATE": schema[3]["type"],
+                "TIME(9)": schema[4]["type"]
+            }
+
+            for orig_type, mapped_type in type_mappings.items():
+                assert mapped_type == orig_type
+
+    def test_binary_data_handling(self, warehouse):
+        """Test handling of binary data types"""
+        with patch('snowflake.connector.connect') as mock_connect:
+            mock_connection = Mock()
+            mock_cursor = Mock()
+            mock_connection.cursor.return_value = mock_cursor
+            mock_connect.return_value = mock_connection
+
+            # Test data with binary types
+            test_data = [
+                ("binary_col", "BINARY", "", "Y", None, "N"),
+                ("varbinary_col", "VARBINARY", "", "Y", None, "N")
+            ]
+            mock_cursor.fetchall.return_value = test_data
+
+            warehouse.connect()
+            table_info = {
+                "database": "test_db",
+                "schema": "test_schema",
+                "table": "test_table"
+            }
+
+            schema = warehouse.get_schema(table_info)
+            assert len(schema) == len(test_data)
+
+            # Verify binary type handling
+            assert schema[0]["type"] == "BINARY"
+            assert schema[1]["type"] == "VARBINARY"
+
+            # Test binary data fetching
+            import pandas as pd
+            binary_df = pd.DataFrame({
+                'binary_col': [b'binary_data', b'more_binary_data']
+            })
+            mock_cursor.fetch_pandas_batches.return_value = [binary_df]
+
+            query = "SELECT binary_col FROM test_table;"
+            result = list(warehouse.get_df_batches(query))
+            
+            assert len(result) == 1
+            assert isinstance(result[0], pd.DataFrame)
+            assert 'binary_col' in result[0].columns
+            assert isinstance(result[0]['binary_col'][0], bytes)
+
+    def test_decimal_precision_handling(self, warehouse):
+        """Test handling of decimal types with various precision and scale"""
+        with patch('snowflake.connector.connect') as mock_connect:
+            mock_connection = Mock()
+            mock_cursor = Mock()
+            mock_connection.cursor.return_value = mock_cursor
+            mock_connect.return_value = mock_connection
+
+            # Test data with various decimal precisions
+            test_data = [
+                ("decimal_38_0", "NUMBER(38,0)", "", "Y", None, "N"),
+                ("decimal_10_2", "DECIMAL(10,2)", "", "Y", None, "N"),
+                ("decimal_5_5", "NUMERIC(5,5)", "", "Y", None, "N"),
+                ("decimal_max", "NUMBER(38,37)", "", "Y", None, "N")
+            ]
+            mock_cursor.fetchall.return_value = test_data
+
+            warehouse.connect()
+            table_info = {
+                "database": "test_db",
+                "schema": "test_schema",
+                "table": "test_table"
+            }
+
+            schema = warehouse.get_schema(table_info)
+            assert len(schema) == len(test_data)
+
+            # Verify precise decimal type handling
+            assert schema[0]["type"] == "NUMBER(38,0)"  # Integer
+            assert schema[1]["type"] == "DECIMAL(10,2)"  # Standard decimal
+            assert schema[2]["type"] == "NUMERIC(5,5)"  # Small precise decimal
+            assert schema[3]["type"] == "NUMBER(38,37)"  # Maximum precision
+
+            # Test decimal data fetching
+            import pandas as pd
+            from decimal import Decimal
+            decimal_df = pd.DataFrame({
+                'decimal_col': [
+                    Decimal('123456789012345678901234567890.0'),
+                    Decimal('123.45'),
+                    Decimal('0.12345'),
+                    Decimal('1.2345678901234567890123456789012345678')
+                ]
+            })
+            mock_cursor.fetch_pandas_batches.return_value = [decimal_df]
+
+            query = "SELECT decimal_col FROM test_table;"
+            result = list(warehouse.get_df_batches(query))
+            
+            assert len(result) == 1
+            assert isinstance(result[0], pd.DataFrame)
+            assert 'decimal_col' in result[0].columns
+            assert str(result[0]['decimal_col'][1]) == "123.45"
+
+class TestBatchProcessing:
+    def test_insert_batch_processing(self, warehouse):
+        """Test processing of insert batches"""
+        with patch('snowflake.connector.connect') as mock_connect:
+            mock_connection = Mock()
+            mock_cursor = Mock()
+            mock_connection.cursor.return_value = mock_cursor
+            mock_connect.return_value = mock_connection
+            
+            # Mock schema to include all relevant columns
+            with patch.object(warehouse, '_get_column_names', return_value=['col1', 'col2', 'col3']):
+                warehouse.connect()
+                table_info = {
+                    "database": "test_db",
+                    "schema": "test_schema",
+                    "table": "test_table"
+                }
+                etl_id = "test-etl-id"
+                
+                # Create mock DataFrame with test data
+                import pandas as pd
+                df_batch = pd.DataFrame({
+                    'col1': [1, 2, 3],
+                    'col2': ['a', 'b', 'c'],
+                    'col3': [True, False, True]
+                })
+                
+                mock_cursor.fetch_pandas_batches.return_value = [df_batch]
+                
+                # Test insert batch processing
+                warehouse.get_insert_batches_for_stream(table_info)
+                
+                # Verify correct SQL was generated
+                expected_query = f"""
+                    SELECT col1, col2, col3, METADATA$ROW_ID as MELCHI_ROW_ID 
+                    FROM {warehouse.get_stream_processing_table_name(table_info)}
+                    WHERE "METADATA$ACTION" = 'INSERT';
+                """
+                
+                assert normalize_sql(mock_cursor.execute.call_args_list[2][0][0]) == normalize_sql(expected_query)
+                mock_cursor.fetch_pandas_batches.assert_called_once()
+
+    def test_delete_batch_processing(self, warehouse):
+        """Test processing of delete batches"""
+        with patch('snowflake.connector.connect') as mock_connect:
+            mock_connection = Mock()
+            mock_cursor = Mock()
+            mock_connection.cursor.return_value = mock_cursor
+            mock_connect.return_value = mock_connection
+            
+            # Mock returning primary keys
+            with patch.object(warehouse, 'get_primary_keys', return_value=['id', 'email']):
+                warehouse.connect()
+                table_info = {
+                    "database": "test_db",
+                    "schema": "test_schema",
+                    "table": "test_table"
+                }
+                
+                # Create mock DataFrame with test data
+                import pandas as pd
+                df_batch = pd.DataFrame({
+                    'id': [1, 2, 3],
+                    'email': ['a@test.com', 'b@test.com', 'c@test.com']
+                })
+                
+                mock_cursor.fetch_pandas_batches.return_value = [df_batch]
+                
+                # Test delete batch processing
+                warehouse.get_delete_batches_for_stream(table_info)
+                
+                # Verify correct SQL was generated
+                expected_query = f"""
+                    SELECT id, email
+                    FROM {warehouse.get_stream_processing_table_name(table_info)}
+                    WHERE "METADATA$ACTION" = 'DELETE';
+                """
+                
+                assert normalize_sql(mock_cursor.execute.call_args_list[2][0][0]) == normalize_sql(expected_query)
+                mock_cursor.fetch_pandas_batches.assert_called_once()
+
+    def test_batch_size_handling(self, warehouse):
+        """Test handling of different batch sizes"""
+        with patch('snowflake.connector.connect') as mock_connect:
+            mock_connection = Mock()
+            mock_cursor = Mock()
+            mock_connection.cursor.return_value = mock_cursor
+            mock_connect.return_value = mock_connection
+            
+            warehouse.connect()
+            table_info = {
+                "database": "test_db",
+                "schema": "test_schema",
+                "table": "test_table"
+            }
+            
+            # Create mock DataFrames of different sizes
+            import pandas as pd
+            small_batch = pd.DataFrame({'col1': range(10)})
+            medium_batch = pd.DataFrame({'col1': range(1000)})
+            large_batch = pd.DataFrame({'col1': range(10000)})
+            
+            test_cases = [
+                ([small_batch], "small batch"),
+                ([medium_batch], "medium batch"),
+                ([large_batch], "large batch")
+            ]
+            
+            for batches, case_name in test_cases:
+                mock_cursor.fetch_pandas_batches.return_value = batches
+                result = list(warehouse.get_df_batches(f"SELECT * FROM {warehouse.get_full_table_name(table_info)}"))
+                
+                assert len(result) == 1, f"Failed to process {case_name}"
+                assert len(result[0]) == len(batches[0]), f"Incorrect row count for {case_name}"
+
+    def test_empty_batch_handling(self, warehouse):
+        """Test handling of empty batches"""
+        with patch('snowflake.connector.connect') as mock_connect:
+            mock_connection = Mock()
+            mock_cursor = Mock()
+            mock_connection.cursor.return_value = mock_cursor
+            mock_connect.return_value = mock_connection
+            
+            warehouse.connect()
+            table_info = {
+                "database": "test_db",
+                "schema": "test_schema",
+                "table": "test_table"
+            }
+            
+            # Create empty DataFrame
+            import pandas as pd
+            empty_batch = pd.DataFrame({'col1': []})
+            mock_cursor.fetch_pandas_batches.return_value = [empty_batch]
+            
+            # Test with empty batch
+            result = list(warehouse.get_df_batches(f"SELECT * FROM {warehouse.get_full_table_name(table_info)}"))
+            
+            assert len(result) == 1, "Should return single empty batch"
+            assert len(result[0]) == 0, "Batch should be empty"
+            assert isinstance(result[0], pd.DataFrame), "Should return DataFrame even when empty"
+
+    def test_large_batch_processing(self, warehouse):
+        """Test processing of large batches with multiple columns and data types"""
+        with patch('snowflake.connector.connect') as mock_connect:
+            mock_connection = Mock()
+            mock_cursor = Mock()
+            mock_connection.cursor.return_value = mock_cursor
+            mock_connect.return_value = mock_connection
+            
+            warehouse.connect()
+            table_info = {
+                "database": "test_db",
+                "schema": "test_schema",
+                "table": "test_table"
+            }
+            
+            # Create large DataFrame with multiple data types
+            import pandas as pd
+            import numpy as np
+            from datetime import datetime, date
+            
+            num_rows = 50000
+            large_batch = pd.DataFrame({
+                'id': range(num_rows),
+                'name': [f'name_{i}' for i in range(num_rows)],
+                'value': np.random.random(num_rows),
+                'date': [date(2024, 1, 1) for _ in range(num_rows)],
+                'timestamp': [datetime.now() for _ in range(num_rows)],
+                'boolean': [i % 2 == 0 for i in range(num_rows)]
+            })
+            
+            mock_cursor.fetch_pandas_batches.return_value = [large_batch]
+            
+            # Test processing large batch
+            result = list(warehouse.get_df_batches(f"SELECT * FROM {warehouse.get_full_table_name(table_info)}"))
+            
+            assert len(result) == 1, "Should return single batch"
+            assert len(result[0]) == num_rows, "Should maintain all rows"
+            assert list(result[0].columns) == list(large_batch.columns), "Should maintain all columns"
+            assert result[0].dtypes.to_dict() == large_batch.dtypes.to_dict(), "Should maintain data types"
