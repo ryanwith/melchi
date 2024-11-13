@@ -86,12 +86,11 @@ def drop_source_objects(test_config):
         source_warehouse.connect("ACCOUNTADMIN")
         source_warehouse.begin_transaction()
         # drop cdc tracking schema
-        source_warehouse.execute_query(f"GRANT ALL PRIVILEGES ON DATABASE {source_warehouse.get_change_tracking_schema_full_name().split('.')[0]} TO ROLE ACCOUNTADMIN;")
+        print(f"GRANT ALL PRIVILEGES ON DATABASE {source_warehouse.get_change_tracking_schema_full_name().split('.')[0]} TO ROLE ACCOUNTADMIN;")
+        source_warehouse.execute_query(f"GRANT ALL PRIVILEGES ON DATABASE IF EXISTS {source_warehouse.get_change_tracking_schema_full_name().split('.')[0]} TO ROLE ACCOUNTADMIN;")
         print(f"GRANT OWNERSHIP ON SCHEMA {source_warehouse.get_change_tracking_schema_full_name()} TO ROLE ACCOUNTADMIN;")
-        try:
-            source_warehouse.execute_query(f"GRANT OWNERSHIP ON SCHEMA {source_warehouse.get_change_tracking_schema_full_name()} TO ROLE ACCOUNTADMIN;")
-        except Exception as e:
-            print(e)
+        source_warehouse.execute_query(f"GRANT OWNERSHIP ON SCHEMA IF EXISTS {source_warehouse.get_change_tracking_schema_full_name()} TO ROLE ACCOUNTADMIN;")
+        print(f"DROP SCHEMA IF EXISTS {source_warehouse.get_change_tracking_schema_full_name()} CASCADE;")
         source_warehouse.execute_query(f"DROP SCHEMA IF EXISTS {source_warehouse.get_change_tracking_schema_full_name()} CASCADE;")
         test_tables = get_test_tables()
         schemas_to_drop = []
@@ -114,10 +113,8 @@ def drop_source_objects(test_config):
             drop_schema_queries.append(drop_schema_query)
 
         for query in grant_ownership_queries:
-            try:
-                source_warehouse.execute_query(query)
-            except Exception as e:
-                print(e)
+            source_warehouse.execute_query(query)
+
 
         for query in drop_schema_queries:
             source_warehouse.execute_query(query)
@@ -448,10 +445,10 @@ def confirm_syncs(test_config):
 @pytest.mark.first
 def test_prep(test_config):
     """First test to run - sets up initial test data"""
-    print("Recreating roles")
-    recreate_roles(test_config)
     print("Dropping source objects")
     drop_source_objects(test_config)
+    print("Recreating roles")
+    recreate_roles(test_config)
     print("Creating source tables")
     create_source_tables(test_config)
     print("Creating cdc schema")
