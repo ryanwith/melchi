@@ -461,17 +461,24 @@ def test_prep(test_config):
     print("Inserting generated data")
     insert_generated_data(test_config, seed_values()['initial_seed_rows'])
 
-@pytest.mark.depends(on=['test_prep'])
 def test_initial_setup(test_config, request):
     """Depends on successful database seeding"""
     if request.session.testsfailed:
         pytest.skip("Skipping as previous tests failed")
     
     result = subprocess.run(
-        ["python3", "main.py", "setup", "--config", "tests/config/snowflake_to_duckdb.yaml", "--replace-existing"], 
-        check=True
+        ["python3", "main.py", "setup", "--config", "tests/config/snowflake_to_duckdb.yaml", "--replace-existing"],
+        capture_output=True,
+        text=True,
+        check=False  # Don't raise exception immediately on non-zero return code
     )
-    assert result.returncode == 0, f"Setup command failed with output:\nstdout: {result.stdout}\nstderr: {result.stderr}"
+    
+    # Check both return code and look for error messages in output
+    assert result.returncode == 0, f"Setup command failed with:\nstdout: {result.stdout}\nstderr: {result.stderr}"
+    assert "Error" not in result.stdout, f"Setup had errors:\n{result.stdout}"
+    assert "Error" not in result.stderr, f"Setup had errors:\n{result.stderr}"
+    assert "Exception" not in result.stdout, f"Setup had exceptions:\n{result.stdout}"
+    assert "Exception" not in result.stderr, f"Setup had exceptions:\n{result.stderr}"
 
 @pytest.mark.depends(on=['test_initial_setup'])
 def test_initial_data_sync(test_config, request):
@@ -481,10 +488,17 @@ def test_initial_data_sync(test_config, request):
     
     result = subprocess.run(
         ["python3", "main.py", "sync_data", "--config", "tests/config/snowflake_to_duckdb.yaml"],
-        check=True
+        capture_output=True,
+        text=True,
+        check=False  # Don't raise exception immediately on non-zero return code
     )
     
-    assert result.returncode == 0, f"Data sync failed with output:\nstdout: {result.stdout}\nstderr: {result.stderr}"
+    # Check both return code and look for error messages in output
+    assert result.returncode == 0, f"Data sync failed with:\nstdout: {result.stdout}\nstderr: {result.stderr}"
+    assert "Error" not in result.stdout, f"Sync had errors:\n{result.stdout}"
+    assert "Error" not in result.stderr, f"Sync had errors:\n{result.stderr}"
+    assert "Exception" not in result.stdout, f"Sync had exceptions:\n{result.stdout}"
+    assert "Exception" not in result.stderr, f"Sync had exceptions:\n{result.stderr}"
 
 @pytest.mark.depends(on=['test_initial_data_sync'])
 def test_run_cdc_no_changes(test_config, request):
