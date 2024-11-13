@@ -264,7 +264,7 @@ class TestSchemaAndMetadata:
             mock_cursor.execute.assert_has_calls([
                 call(f"USE ROLE {warehouse.config['role']};"),
                 call(f"USE WAREHOUSE {warehouse.config['warehouse']};"),
-                call("DESC TABLE test_db.test_schema.test_table")
+                call("""DESC TABLE test_db.test_schema.test_table;""")
             ])
             
             # Verify schema format
@@ -726,11 +726,11 @@ class TestCDCSetup:
             warehouse._create_stream_objects(table_info)
             
             stream_name = warehouse.get_stream_name(table_info)
-            processing_table = f"{stream_name}_processing"
+            processing_table = warehouse.get_stream_processing_table_name(table_info)
             
             # Verify all required SQL statements were executed
             expected_calls = [
-                call(f"CREATE STREAM IF NOT EXISTS {stream_name} ON TABLE {warehouse.get_full_table_name(table_info)} SHOW_INITIAL_ROWS = true APPEND_ONLY = FALSE"),
+                call(f"CREATE STREAM IF NOT EXISTS {stream_name} ON TABLE {warehouse.get_full_table_name(table_info)} SHOW_INITIAL_ROWS = true APPEND_ONLY = FALSE;"),
                 call(f"CREATE TABLE {processing_table} IF NOT EXISTS LIKE {warehouse.get_full_table_name(table_info)};"),
                 call(f'ALTER TABLE {processing_table} ADD COLUMN IF NOT EXISTS "METADATA$ACTION" varchar;'),
                 call(f'ALTER TABLE {processing_table} ADD COLUMN IF NOT EXISTS "METADATA$ISUPDATE" varchar;'),
@@ -759,11 +759,11 @@ class TestCDCSetup:
             warehouse._create_stream_objects(table_info)
             
             stream_name = warehouse.get_stream_name(table_info)
-            processing_table = f"{stream_name}_processing"
+            processing_table = warehouse.get_stream_processing_table_name(table_info)
             
             # Verify all required SQL statements were executed
             expected_calls = [
-                call(f"CREATE STREAM IF NOT EXISTS {stream_name} ON TABLE {warehouse.get_full_table_name(table_info)} SHOW_INITIAL_ROWS = true APPEND_ONLY = TRUE"),
+                call(f"CREATE STREAM IF NOT EXISTS {stream_name} ON TABLE {warehouse.get_full_table_name(table_info)} SHOW_INITIAL_ROWS = true APPEND_ONLY = TRUE;"),
                 call(f"CREATE TABLE {processing_table} IF NOT EXISTS LIKE {warehouse.get_full_table_name(table_info)};"),
                 call(f'ALTER TABLE {processing_table} ADD COLUMN IF NOT EXISTS "METADATA$ACTION" varchar;'),
                 call(f'ALTER TABLE {processing_table} ADD COLUMN IF NOT EXISTS "METADATA$ISUPDATE" varchar;'),
@@ -793,11 +793,11 @@ class TestCDCSetup:
             warehouse._create_stream_objects(table_info)
             
             stream_name = warehouse.get_stream_name(table_info)
-            processing_table = f"{stream_name}_processing"
+            processing_table = warehouse.get_stream_processing_table_name(table_info)
             
             # Verify all required SQL statements were executed with IF NOT EXISTS
             expected_calls = [
-                call(f"CREATE OR REPLACE STREAM {stream_name} ON TABLE {warehouse.get_full_table_name(table_info)} SHOW_INITIAL_ROWS = true APPEND_ONLY = FALSE"),
+                call(f"CREATE OR REPLACE STREAM {stream_name} ON TABLE {warehouse.get_full_table_name(table_info)} SHOW_INITIAL_ROWS = true APPEND_ONLY = FALSE;"),
                 call(f"CREATE OR REPLACE TABLE {processing_table} LIKE {warehouse.get_full_table_name(table_info)};"),
                 call(f'ALTER TABLE {processing_table} ADD COLUMN IF NOT EXISTS "METADATA$ACTION" varchar;'),
                 call(f'ALTER TABLE {processing_table} ADD COLUMN IF NOT EXISTS "METADATA$ISUPDATE" varchar;'),
@@ -945,7 +945,7 @@ class TestCDCOperations:
             warehouse.cleanup_source(table_info)
             
             stream_processing_table = warehouse.get_stream_processing_table_name(table_info)
-            expected_call = call(f"TRUNCATE TABLE {stream_processing_table}")
+            expected_call = call(f"TRUNCATE TABLE {stream_processing_table};")
             assert mock_cursor.execute.call_args == expected_call
 
     def test_cleanup_source_missing_table(self, warehouse):
@@ -1161,11 +1161,11 @@ class TestSQLGeneration:
         }]
         
         sql = warehouse.generate_source_sql(tables)
-        
+
         # Special characters should be preserved in identifiers
-        assert "GRANT USAGE ON DATABASE test-db" in sql
-        assert "GRANT USAGE ON SCHEMA test-db.test.schema" in sql
-        assert "GRANT SELECT ON TABLE test-db.test.schema.test$table" in sql
+        assert f"""GRANT USAGE ON DATABASE test-db""" in sql
+        assert f"""GRANT USAGE ON SCHEMA test-db.test.schema""" in sql
+        assert f"""GRANT SELECT ON TABLE test-db.test.schema.test$table""" in sql
 
     def test_generate_source_sql_empty_tables(self, warehouse):
         """Test SQL generation with empty table list"""
@@ -1205,7 +1205,6 @@ class TestSQLGeneration:
         ]
         
         sql = warehouse.generate_source_sql(tables)
-        
         # Should generate same grants regardless of CDC type
         for table in tables:
             table_name = f"{table['database']}.{table['schema']}.{table['table']}"
@@ -1327,7 +1326,7 @@ class TestErrorHandling:
             
             # Verify cleanup was attempted
             expected_cleanup_call = call(
-                f"TRUNCATE TABLE {warehouse.get_stream_processing_table_name(table_info)}"
+                f"TRUNCATE TABLE {warehouse.get_stream_processing_table_name(table_info)};"
             )
             assert expected_cleanup_call in mock_cursor.execute.call_args_list
 

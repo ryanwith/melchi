@@ -168,7 +168,7 @@ class SnowflakeWarehouse(AbstractWarehouse):
         if get_cdc_type(table_info) in ("APPEND_ONLY_STREAM", "STANDARD_STREAM"):
             stream_processing_table_name = self.get_stream_processing_table_name(table_info)
             try:
-                self.cursor.execute(f"TRUNCATE TABLE {stream_processing_table_name}")
+                self.cursor.execute(f"TRUNCATE TABLE {stream_processing_table_name};")
             except Exception as e:
                 # Check for table not found error - Snowflake error code 002003
                 if "002003" in str(e) or "does not exist" in str(e).lower():
@@ -197,7 +197,7 @@ class SnowflakeWarehouse(AbstractWarehouse):
         elif self.cursor == None:
             raise ConnectionError("You do not have a valid cursor")
         
-        self.cursor.execute(f"DESC TABLE {self.get_full_table_name(table_info)}")
+        self.cursor.execute(f"DESC TABLE {self.get_full_table_name(table_info)};")
         schema = []
         for row in self.cursor.fetchall():
             schema.append(self.format_schema_row(row))
@@ -405,10 +405,10 @@ class SnowflakeWarehouse(AbstractWarehouse):
         stream_processing_table = f"{stream_name}_processing"
         if self.replace_existing() == True:
             create_query = f"CREATE OR REPLACE TABLE {stream_processing_table} LIKE {table_name};"
-            create_stream_query = f"CREATE OR REPLACE STREAM {stream_name} ON TABLE {table_name} SHOW_INITIAL_ROWS = true {append_only_statement}"
+            create_stream_query = f"CREATE OR REPLACE STREAM {stream_name} ON TABLE {table_name} SHOW_INITIAL_ROWS = true {append_only_statement};"
         else:
             create_query = f"CREATE TABLE {stream_processing_table} IF NOT EXISTS LIKE {table_name};"
-            create_stream_query = f"CREATE STREAM IF NOT EXISTS {stream_name} ON TABLE {table_name} SHOW_INITIAL_ROWS = true {append_only_statement}"
+            create_stream_query = f"CREATE STREAM IF NOT EXISTS {stream_name} ON TABLE {table_name} SHOW_INITIAL_ROWS = true {append_only_statement};"
         create_stream_processing_table_queries = [
             create_stream_query,
             create_query,

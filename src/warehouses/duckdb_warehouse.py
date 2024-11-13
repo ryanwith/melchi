@@ -111,9 +111,7 @@ class DuckDBWarehouse(AbstractWarehouse):
             nullable = "TRUE" if column['nullable'] == True else "FALSE"
             default_value = f"'{self.format_value_for_insert(column['default_value'])}'" if column['default_value'] else "NULL"
             primary_key = "TRUE" if column['primary_key'] == True else "FALSE"
-            source_column_values = f"""(
-                {source_db}, {source_schema_name}, {source_table}, {name}, {type}, {default_value}, {nullable}, {primary_key}
-            )"""
+            source_column_values = f"""({source_db}, {source_schema_name}, {source_table}, {name}, {type}, {default_value}, {nullable}, {primary_key})"""
             source_columns.append(source_column_values)
 
         current_timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
@@ -352,7 +350,7 @@ class DuckDBWarehouse(AbstractWarehouse):
     def table_exists(self, table_info):
         table = table_info['table']
         schema = table_info['schema']
-        query = f"SELECT * FROM information_schema.tables WHERE table_schema = '{schema}' AND table_name = '{table}'"
+        query = f"SELECT * FROM information_schema.tables WHERE table_schema = '{schema}' AND table_name = '{table}';"
         results = self.connection.execute(query).fetchone()
         return True if results else False    
 
