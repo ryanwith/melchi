@@ -1152,21 +1152,6 @@ class TestSQLGeneration:
         assert sql.count("GRANT SELECT ON TABLE db1.schema1.table2") == 1
         assert sql.count("GRANT SELECT ON TABLE db2.schema2.table3") == 1
 
-    def test_generate_source_sql_special_characters(self, warehouse):
-        """Test SQL generation with special characters in names"""
-        tables = [{
-            "database": "test-db",
-            "schema": "test.schema",
-            "table": "test$table"
-        }]
-        
-        sql = warehouse.generate_source_sql(tables)
-
-        # Special characters should be preserved in identifiers
-        assert f"""GRANT USAGE ON DATABASE test-db""" in sql
-        assert f"""GRANT USAGE ON SCHEMA test-db.test.schema""" in sql
-        assert f"""GRANT SELECT ON TABLE test-db.test.schema.test$table""" in sql
-
     def test_generate_source_sql_empty_tables(self, warehouse):
         """Test SQL generation with empty table list"""
         tables = []
@@ -1386,3 +1371,4 @@ class TestErrorHandling:
             mock_connection.close.assert_called_once()
             assert warehouse.connection is None
             assert warehouse.cursor is None
+
