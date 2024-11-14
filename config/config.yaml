@@ -12,7 +12,7 @@ source:
 
 target:
   type: duckdb
-  database: output/duckdb_database.duckdb
+  database: output/duckdb_test_database.duckdb
   change_tracking_schema: melchi
 
 tables_config:
